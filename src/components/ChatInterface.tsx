@@ -830,13 +830,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           setSearchResults({
             summary: searchResponse.search_summary,
             references: searchService.formatSearchResults(searchResponse.references),
-            metadata: searchResponse.metadata
+            metadata: {
+              query_id: searchResponse.metadata?.query_id || 'unknown',
+              query_detected: true,
+              search_triggered: true,
+              search_triggered_by: 'manual' as const,
+              model_used: searchResponse.metadata?.model_used,
+              sources_count: searchResponse.references.length,
+              total_cost_usd: searchResponse.metadata?.cost_usd || 0,
+              latency_ms: searchResponse.metadata?.latency_ms || 0,
+              cache_hit: searchResponse.metadata?.cache_hit || false,
+              data_freshness: searchResponse.data_freshness
+            }
           });
-
-          // Enhance content with search results
-          if (searchResponse.search_summary) {
-            finalContent = `${content}\n\n[Web Search Results]:\n${searchResponse.search_summary}`;
-          }
         } catch (error) {
           console.error('Search error:', error);
           toast.error(error instanceof Error ? error.message : 'Search failed');
