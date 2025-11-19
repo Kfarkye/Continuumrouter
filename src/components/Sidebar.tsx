@@ -700,4 +700,154 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           </button>
         </div>
 
-        {/* 3
+{/* 3. Navigation List */}
+        <div className="flex-1 overflow-y-auto px-3 space-y-8 custom-scrollbar">
+          {Object.entries(groupedNav).map(([group, items]) => (
+            <div key={group}>
+              {!props.isSidebarCollapsed && (
+                <h4 className="px-3 mb-2 text-[11px] font-bold uppercase tracking-widest text-[#52525b]">
+                  {group}
+                </h4>
+              )}
+              <div className="space-y-0.5">
+                {items.map(item => (
+                  <NavItem
+                    key={item.id}
+                    item={item}
+                    isActive={props.activeSection === item.id}
+                    displayMode={props.isSidebarCollapsed ? 'collapsed' : 'expanded'}
+                    onClick={handleNavClick}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 4. Processing Indicator (Stripe Terminal Style) */}
+        {props.isProcessing && !props.isSidebarCollapsed && (
+          <div className="px-3 py-4">
+            <div className="bg-[#18181b] rounded border border-white/10 p-3 shadow-inner">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-mono text-[#3b82f6]">PROCESSING</span>
+                <span className="text-xs font-mono text-[#a1a1aa]">{props.currentProgress}%</span>
+              </div>
+              <div className="h-1 w-full bg-[#09090b] rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-[#3b82f6] transition-all duration-300" 
+                  style={{ width: `${props.currentProgress}%` }} 
+                />
+              </div>
+              {props.currentStep && (
+                <div className="mt-2 text-[10px] text-[#a1a1aa] truncate font-mono">
+                  {props.currentStep}
+                </div>
+              )}
+              {props.currentModel && (
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="w-4 h-4">
+                    {getModelIcon(props.currentModel)}
+                  </div>
+                  <span className="text-[10px] text-[#a1a1aa] font-mono">
+                    {props.currentModel.toUpperCase()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 5. Footer */}
+        <div className="p-3 border-t border-white/10 space-y-1">
+          <NavItem
+            item={{ 
+              id: 'settings', 
+              label: 'Settings', 
+              icon: Settings, 
+              origin: 'settings', 
+              action: 'navigate', 
+              description: 'Settings', 
+              group: 'Resources' 
+            }}
+            isActive={props.activeSection === 'settings'}
+            displayMode={props.isSidebarCollapsed ? 'collapsed' : 'expanded'}
+            onClick={handleNavClick}
+          />
+          <NavItem
+            item={{ 
+              id: 'signout', 
+              label: 'Sign Out', 
+              icon: LogOut, 
+              origin: 'signout', 
+              action: 'action', 
+              description: 'Sign Out', 
+              group: 'Resources' 
+            }}
+            isActive={false}
+            displayMode={props.isSidebarCollapsed ? 'collapsed' : 'expanded'}
+            onClick={handleNavClick}
+          />
+        </div>
+
+        {/* Collapse Button (Desktop Only) */}
+        {!isMobile && (
+          <button
+            onClick={props.onToggleSidebar}
+            className="hidden lg:flex absolute top-6 -right-3 w-6 h-6 bg-[#18181b] border border-[#3f3f46] rounded-full items-center justify-center text-[#a1a1aa] hover:text-white shadow-md transition-colors z-20"
+            aria-label={props.isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {props.isSidebarCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+          </button>
+        )}
+      </aside>
+
+      {/* Modals */}
+      <ConversationListModal
+        isOpen={modalState.conversations}
+        onClose={() => setModalState(prev => ({ ...prev, conversations: false }))}
+        sessions={props.sessions}
+        selectedSessionId={props.selectedSessionId}
+        onSessionSelect={props.onSessionSelect}
+        onSessionDelete={props.onSessionDelete}
+        onSessionUpdate={props.onSessionUpdate}
+      />
+
+      <PromptLibraryModal
+        isOpen={modalState.systemRules}
+        onClose={() => setModalState(prev => ({ ...prev, systemRules: false }))}
+        onOpenCreator={() => {
+          setModalState(prev => ({ ...prev, systemRules: false, promptCreator: true }));
+        }}
+        userId={props.userId || ''}
+      />
+
+      <PromptCreatorModal
+        isOpen={modalState.promptCreator}
+        onClose={() => setModalState(prev => ({ ...prev, promptCreator: false }))}
+        onBack={() => {
+          setModalState(prev => ({ ...prev, promptCreator: false, systemRules: true }));
+        }}
+        userId={props.userId || ''}
+      />
+
+      <FilesModal
+        isOpen={modalState.files}
+        onClose={() => setModalState(prev => ({ ...prev, files: false }))}
+        onFileSelect={props.onFileSelect}
+        userId={props.userId || ''}
+      />
+
+      <ClinicianImportModal
+        isOpen={modalState.import}
+        onClose={() => setModalState(prev => ({ ...prev, import: false }))}
+        userId={props.userId || ''}
+      />
+    </>
+  );
+};
+
+// ============================================================================
+// EXPORT
+// ============================================================================
+
+export default Sidebar;
