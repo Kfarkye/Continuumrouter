@@ -225,10 +225,9 @@ Deno.serve(async (req: Request) => {
     }];
 
     const perplexityPayload: any = {
-      model: model === 'sonar-pro' ? 'llama-3.1-sonar-huge-128k-online' : 'llama-3.1-sonar-small-128k-online',
+      model: model === 'sonar-pro' ? 'sonar-pro' : 'sonar',
       messages,
-      max_tokens: 4096,
-      temperature: 0.7,
+      temperature: 0.2,
       top_p: 0.9,
       return_citations: true,
       search_recency_filter: published_after ? 'day' : undefined
