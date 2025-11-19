@@ -226,16 +226,8 @@ Deno.serve(async (req: Request) => {
 
     const perplexityPayload: any = {
       model: model === 'sonar-pro' ? 'sonar-pro' : 'sonar',
-      messages,
-      temperature: 0.2,
-      top_p: 0.9,
-      return_citations: true,
-      search_recency_filter: published_after ? 'day' : undefined
+      messages
     };
-
-    if (search_domain_filter && search_domain_filter.length > 0) {
-      perplexityPayload.search_domain_filter = search_domain_filter;
-    }
 
     const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
