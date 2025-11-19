@@ -25,6 +25,7 @@ interface SearchRequest {
   search_domain_filter?: string[];
   session_id?: string;
   conversation_id?: string;
+  trigger_source?: 'auto' | 'manual';
 }
 
 interface PerplexityResponse {
@@ -123,7 +124,8 @@ Deno.serve(async (req: Request) => {
       published_after,
       search_domain_filter,
       session_id,
-      conversation_id
+      conversation_id,
+      trigger_source = 'manual'
     } = payload;
 
     if (!query || query.trim().length === 0) {
@@ -133,7 +135,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`[Search Request] User: ${user.id}, Query: "${query.substring(0, 50)}...", Model: ${model}`);
+    console.log(`[Search Request] User: ${user.id}, Query: "${query.substring(0, 50)}...", Model: ${model}, Trigger: ${trigger_source}`);
 
     const supabaseAdmin = createClient(
       supabaseUrl,
@@ -190,7 +192,7 @@ Deno.serve(async (req: Request) => {
           conversation_id,
           query_text: query,
           provider_model: model,
-          search_triggered_by: 'manual',
+          search_triggered_by: trigger_source,
           tokens_input: 0,
           tokens_output: 0,
           latency_ms: Date.now() - startTime,
@@ -269,7 +271,7 @@ Deno.serve(async (req: Request) => {
         conversation_id,
         query_text: query,
         provider_model: model,
-        search_triggered_by: 'manual',
+        search_triggered_by: trigger_source,
         tokens_input: inputTokens,
         tokens_output: outputTokens,
         latency_ms: latency,
