@@ -8,6 +8,7 @@ import {
 import { toast } from 'react-hot-toast';
 
 // MARK: Internal Hooks
+// Note: Ensure these paths are correct for your project structure
 import { useAiRouterChat } from '../hooks/useAiRouterChat';
 import { useCodeSnippets } from '../hooks/useCodeSnippets';
 import { useContextManager } from '../hooks/useContextManager';
@@ -94,6 +95,7 @@ const useClickOutside = (ref: React.RefObject<HTMLElement> | React.RefObject<HTM
         handler();
       }
     };
+    // Optimization: Use capture phase (true) for better reliability
     document.addEventListener('mousedown', listener, true);
     document.addEventListener('touchstart', listener, true);
     return () => {
@@ -105,16 +107,16 @@ const useClickOutside = (ref: React.RefObject<HTMLElement> | React.RefObject<HTM
 
 
 // ============================================================================
-// MARK: UTILITY COMPONENTS
+// MARK: UTILITY COMPONENTS (Memoized for performance)
 // ============================================================================
 
-const LoadingFallback = () => (
+const LoadingFallback = React.memo(() => (
   <div className="flex items-center justify-center h-full w-full" role="status" aria-label="Loading">
     <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
   </div>
-);
+));
 
-const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+const ScrollToBottomButton: React.FC<{ onClick: () => void }> = React.memo(({ onClick }) => (
   <motion.button
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -128,9 +130,9 @@ const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) =>
   >
     <ArrowDown className="w-5 h-5 text-zinc-200" />
   </motion.button>
-);
+));
 
-const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName: string | null; }> = ({ step, progress, modelName }) => (
+const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName: string | null; }> = React.memo(({ step, progress, modelName }) => (
   <motion.div
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
@@ -145,14 +147,20 @@ const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName:
       <p className="text-sm font-medium text-zinc-200">
         {step || 'Processing...'} {modelName && <span className='text-zinc-400 font-normal'>({modelName})</span>}
       </p>
-      <div className="w-full bg-zinc-700 rounded-full h-1 mt-1.5 overflow-hidden">
+      <div
+        className="w-full bg-zinc-700 rounded-full h-1 mt-1.5 overflow-hidden"
+        role="progressbar"
+        aria-valuenow={progress}
+        aria-valuemin={0}
+        aria-valuemax={100}
+       >
         <div className="bg-blue-500 h-1 transition-all duration-500" style={{ width: `${Math.max(10, progress)}%` }} />
       </div>
     </div>
   </motion.div>
-);
+));
 
-const ImageLightbox: React.FC<{ imageUrl: string; onClose: () => void }> = ({ imageUrl, onClose }) => {
+const ImageLightbox: React.FC<{ imageUrl: string; onClose: () => void }> = React.memo(({ imageUrl, onClose }) => {
   const lightboxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -198,7 +206,7 @@ const ImageLightbox: React.FC<{ imageUrl: string; onClose: () => void }> = ({ im
       </button>
     </motion.div>
   );
-};
+});
 
 
 // ============================================================================
@@ -273,6 +281,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const isSavingTitle = useRef(false);
   const latestProviderRef = useRef('unknown');
+  // Optimization: Use ref to track current attachments for cleanup effects
   const imageAttachmentsRef = useRef(imageAttachments);
 
   // ==========================================================================
@@ -426,12 +435,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return lastMessage && lastMessage.role === 'user';
   }, [isSending, messages]);
 
+  // Keep the ref updated with the latest state
   useEffect(() => {
     imageAttachmentsRef.current = imageAttachments;
   }, [imageAttachments]);
 
+  // Performance: Cleanup Blob URLs on component unmount to prevent memory leaks
   useEffect(() => {
     return () => {
+      // Use the ref's current value during cleanup
       imageAttachmentsRef.current.forEach(att => {
         if (att.url && att.url.startsWith('blob:') && att.file) {
           URL.revokeObjectURL(att.url);
@@ -472,6 +484,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   useEffect(() => {
     if (!isLoadingOnboarding && !hasSeenSpacesIntro && userId) {
+      // Preload the modal component
       import('./SpacesIntroModal');
       const timer = setTimeout(() => setShowSpacesIntro(true), 1000);
       return () => clearTimeout(timer);
@@ -613,10 +626,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, []);
 
   const handleStorageClick = useCallback(() => {
-    if (!showStorage) import('./StorageManager');
+    if (!showStorage) import('./StorageManager'); // Preload
     setShowStorage(prev => {
       const newState = !prev;
       if (!newState && storageButtonRef.current) {
+        // Refocus the button after closing the modal for A11y
         setTimeout(() => storageButtonRef.current?.focus(), 50);
       }
       return newState;
@@ -624,7 +638,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [showStorage]);
 
   const handleToggleCodeSnippets = useCallback(() => {
-    if (!showCodeSnippets) import('./CodeSnippetSidebar');
+    if (!showCodeSnippets) import('./CodeSnippetSidebar'); // Preload
     setShowCodeSnippets(prev => !prev);
   }, [showCodeSnippets]);
 
@@ -717,6 +731,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         toast.error("Cannot remove image while uploading.");
         return prev;
       }
+      // Cleanup Blob URL
       if (attachmentToRemove?.url && attachmentToRemove.url.startsWith('blob:') && attachmentToRemove.file) {
         URL.revokeObjectURL(attachmentToRemove.url);
       }
@@ -731,6 +746,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
     setAttachedFiles([]);
     setImageAttachments((prev) => {
+      // Cleanup Blob URLs
       prev.forEach(att => {
         if (att.url && att.url.startsWith('blob:') && att.file) URL.revokeObjectURL(att.url);
       });
@@ -738,6 +754,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   }, [isUploading]);
 
+  // Robust image upload handler
   const uploadSingleImage = useCallback(async (attachment: ImageAttachment): Promise<string | null> => {
     if (!userId || !sessionId) return null;
     if (attachment.id) return attachment.id;
@@ -771,14 +788,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [userId, sessionId]);
 
   const handleRetryUpload = useCallback(async (tempId: string) => {
+    // Use the ref to access the current state safely in async callback
     const attachmentToRetry = imageAttachmentsRef.current.find(att => att.tempId === tempId);
     if (attachmentToRetry && attachmentToRetry.uploadError && !attachmentToRetry.isUploading && attachmentToRetry.file) {
       await uploadSingleImage(attachmentToRetry);
     }
   }, [uploadSingleImage]);
 
+  // Core sending logic (Refined failure handling)
   const handleSendMessage = useCallback(
     async (content: string) => {
+      // 1. Pre-flight checks
       if (isSending || (!content.trim() && attachedFiles.length === 0 && imageAttachments.length === 0)) return;
       if (isUploading) {
         toast.error("Please wait for current uploads to finish.");
@@ -786,6 +806,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       let finalContent = content;
+
+      // 2. Context Validation (Client-side token check)
       if (context && context.is_active && context.context_content && contextEnabled) {
         try {
           const validation = await validateTokenLimit(context.context_content, content, selectedModel);
@@ -793,6 +815,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             toast.error(`Token limit exceeded (${validation.totalTokens}/${validation.maxTokens}).`);
             return;
           }
+          // Note: Depending on backend architecture, this injection might be redundant if the backend handles it fully.
           finalContent = `${context.context_content}\n\n---\n\n${content}`;
         } catch (error) {
           console.error('Error validating token limit:', error);
@@ -800,6 +823,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
       }
 
+      // 3. Image Uploads (Parallelized)
       let uploadedImageIdsList: string[] = [];
       let uploadFailures = false;
       const imagesToUpload = imageAttachments.filter(att => !att.id && att.file);
@@ -808,9 +832,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const uploadPromises = imagesToUpload.map(attachment => uploadSingleImage(attachment));
         const results = await Promise.all(uploadPromises);
         uploadedImageIdsList = results.filter((id): id is string => id !== null);
+        // CRITICAL: Check for failures
         if (uploadedImageIdsList.length < imagesToUpload.length) uploadFailures = true;
       }
 
+      // Combine IDs
       const preUploadedImageIds = imageAttachments
         .filter(att => att.id && !imagesToUpload.some(itu => itu.tempId === att.tempId))
         .map(att => att.id!);
@@ -818,18 +844,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       uploadedImageIdsList = [...uploadedImageIdsList, ...preUploadedImageIds];
 
       if (uploadFailures) {
-        toast.error("Message not sent due to upload failures.");
+        // Halt if uploads failed
+        toast.error("Message not sent due to upload failures. Please check attachments and retry.");
         return;
       }
 
+      // 4. File ID Mapping
       const attachedFileNames = attachedFiles.map(f => f.file.name);
       const matchingStoredFiles = (files || []).filter(f => attachedFileNames.includes(f.name)).map(f => f.id);
 
+      // 5. Send Message
       try {
         await sendMessage(finalContent, matchingStoredFiles, uploadedImageIdsList);
-        handleClearAttachments();
+        handleClearAttachments(); // Clear only on success
       } catch (sendError) {
         const errorMsg = sendError instanceof Error ? sendError.message : 'Failed to send message.';
+        // This error is often already handled by the hook, but we include it here for robustness.
         toast.error(`Error sending message: ${errorMsg}`);
       }
     },
@@ -1293,15 +1323,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             hasAttachedImages={imageAttachments.length > 0}
             onStorageClick={handleStorageClick}
             storageButtonRef={storageButtonRef}
-            onScrollToBottom={undefined}
+            onScrollToBottom={undefined} // Consider implementing this if needed
             onError={message => toast.error(message)}
           />
         </div>
 
-        {/* Global Error */}
+        {/* Global Error Display */}
         {error && !isLoadingHistory && (
           <div className="mx-4 mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-xl flex items-start gap-3" role="alert">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            {/* Displaying the error message from the hook, which captures Supabase/API errors */}
             <span className="text-sm text-red-300">Connection Error: {error.message}</span>
           </div>
         )}
@@ -1326,6 +1357,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           { "translate-x-full md:w-0 md:border-l-0": !showCodeSnippets, "translate-x-0 md:w-80": showCodeSnippets }
         )}
         aria-hidden={!showCodeSnippets}
+        // Improve visibility handling for transition end
         style={{ visibility: showCodeSnippets ? 'visible' : 'hidden' }}
       >
         {showCodeSnippets && (
