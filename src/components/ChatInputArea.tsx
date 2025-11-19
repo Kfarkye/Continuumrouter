@@ -14,7 +14,8 @@ import {
   Paperclip,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Globe
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useInputInjection } from '../contexts/InputInjectionContext';
@@ -51,6 +52,8 @@ interface ChatInputAreaProps {
   onStorageClick?: () => void;
   onScrollToBottom?: () => void;
   storageButtonRef?: React.RefObject<HTMLButtonElement>;
+  searchEnabled?: boolean;
+  onSearchToggle?: () => void;
 }
 
 export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
@@ -65,6 +68,8 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   onStorageClick,
   onScrollToBottom,
   storageButtonRef,
+  searchEnabled = false,
+  onSearchToggle,
 }) => {
   const [input, setInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -361,6 +366,25 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             >
               <Paperclip className="w-5 h-5" />
             </button>
+
+            {/* Search Toggle Button */}
+            {onSearchToggle && (
+              <button
+                onClick={onSearchToggle}
+                className={cn(
+                  "flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 flex-shrink-0",
+                  searchEnabled
+                    ? "text-blue-400 bg-blue-500/20 hover:bg-blue-500/30"
+                    : "text-white/50 hover:text-white hover:bg-white/10",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                  disabled && "cursor-not-allowed"
+                )}
+                disabled={disabled}
+                title={searchEnabled ? "Web search enabled" : "Enable web search"}
+              >
+                <Globe className="w-5 h-5" />
+              </button>
+            )}
 
             {/* Text Input */}
             <div className="flex-1 min-w-0 py-2">

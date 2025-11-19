@@ -21,6 +21,7 @@ import { FileUploadPreview } from './FileUploadPreview';
 import { ChatInputArea } from './ChatInputArea';
 import { ContextBanner } from './ContextBanner';
 import { SpaceSelector } from './SpaceSelector';
+import { SearchResults } from './SearchResults';
 
 // MARK: Utilities and Services
 import { uploadImage } from '../lib/imageStorageService';
@@ -34,6 +35,7 @@ import {
   getFileSizeEstimate,
 } from '../utils/exportUtils';
 import { trackExport } from '../lib/analytics';
+import { getSearchService, detectSearchIntent } from '../services/searchService';
 
 // MARK: Types
 import { StoredFile, SavedSchema, ImageAttachment, CodeSnippet, LocalFileAttachment, ChatMessage } from '../types';
@@ -269,6 +271,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showSpaceSettings, setShowSpaceSettings] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
   const [showSpacesIntro, setShowSpacesIntro] = useState(false);
+
+  const [searchEnabled, setSearchEnabled] = useState(false);
+  const [searchResults, setSearchResults] = useState<any>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -807,6 +813,39 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       let finalContent = content;
 
+      // 2. Web Search (if enabled)
+      if (searchEnabled && content.trim() && accessToken) {
+        setIsSearching(true);
+        setSearchResults(null);
+        try {
+          const searchService = getSearchService(accessToken);
+          const searchResponse = await searchService.search({
+            query: content,
+            session_id: sessionId,
+            conversation_id: sessionId,
+            max_results: 5,
+            model: 'sonar'
+          });
+
+          setSearchResults({
+            summary: searchResponse.search_summary,
+            references: searchService.formatSearchResults(searchResponse.references),
+            metadata: searchResponse.metadata
+          });
+
+          // Enhance content with search results
+          if (searchResponse.search_summary) {
+            finalContent = `${content}\n\n[Web Search Results]:\n${searchResponse.search_summary}`;
+          }
+        } catch (error) {
+          console.error('Search error:', error);
+          toast.error(error instanceof Error ? error.message : 'Search failed');
+        } finally {
+          setIsSearching(false);
+          setSearchEnabled(false); // Reset toggle after search
+        }
+      }
+
       // 2. Context Validation (Client-side token check)
       if (context && context.is_active && context.context_content && contextEnabled) {
         try {
@@ -863,7 +902,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         toast.error(`Error sending message: ${errorMsg}`);
       }
     },
-    [isSending, sendMessage, attachedFiles, imageAttachments, files, userId, sessionId, handleClearAttachments, isUploading, uploadSingleImage, context, contextEnabled, selectedModel]
+    [isSending, sendMessage, attachedFiles, imageAttachments, files, userId, sessionId, handleClearAttachments, isUploading, uploadSingleImage, context, contextEnabled, selectedModel, searchEnabled, accessToken]
   );
 
   const handleExport = useCallback(
@@ -1278,12 +1317,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       isStreaming={isSending}
                       onImageClick={handleImageClick}
                     />
+
+                    {/* Search Results Display */}
+                    {searchResults && (
+                      <div className="px-4 md:px-6 lg:px-8 mb-4">
+                        <SearchResults
+                          results={searchResults.references}
+                          metadata={searchResults.metadata}
+                          className="max-w-4xl mx-auto"
+                        />
+                      </div>
+                    )}
+
                     <AnimatePresence>
                       {isProcessing && (
                         <ProcessingIndicator
                           step={currentStep}
                           progress={currentProgress}
                           modelName={activeModelConfig?.name || null}
+                        />
+                      )}
+                      {isSearching && (
+                        <ProcessingIndicator
+                          step="Searching the web..."
+                          progress={50}
+                          modelName="Perplexity"
                         />
                       )}
                     </AnimatePresence>
@@ -1317,14 +1375,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onSend={handleSendMessage}
             onFileSelect={handleFileSelect}
             onImageSelect={handleImageSelect}
-            isStreaming={isSending}
-            disabled={isSending || isLoadingHistory || isUploading}
+            isStreaming={isSending || isSearching}
+            disabled={isSending || isLoadingHistory || isUploading || isSearching}
             hasAttachedFiles={attachedFiles.length > 0}
             hasAttachedImages={imageAttachments.length > 0}
             onStorageClick={handleStorageClick}
             storageButtonRef={storageButtonRef}
             onScrollToBottom={undefined} // Consider implementing this if needed
             onError={message => toast.error(message)}
+            searchEnabled={searchEnabled}
+            onSearchToggle={() => setSearchEnabled(!searchEnabled)}
           />
         </div>
 
