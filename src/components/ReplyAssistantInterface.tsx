@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useReplyAssistant } from '../hooks/useReplyAssistant';
-import { Sparkles } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { ClinicianReplyContext } from '../types';
 
 interface ReplyAssistantInterfaceProps {
   userId: string;
 }
 
-export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps) {
+const ReplyAssistantInterface = React.memo(({ userId }: ReplyAssistantInterfaceProps) => {
   const {
     clinicians,
-    messages,
-    currentThread,
     isLoading,
     isGenerating,
     generateReply,
@@ -30,7 +26,10 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
   } | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
-  const selectedClinician = clinicians.find(c => c.id === selectedClinicianId);
+  const selectedClinician = useMemo(
+    () => clinicians.find(c => c.id === selectedClinicianId),
+    [clinicians, selectedClinicianId]
+  );
 
   useEffect(() => {
     if (clinicians.length > 0 && !selectedClinicianId) {
@@ -38,7 +37,7 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
     }
   }, [clinicians, selectedClinicianId]);
 
-  const handleGenerateReply = async () => {
+  const handleGenerateReply = useCallback(async () => {
     if (!selectedClinicianId || !incomingText.trim()) {
       toast.error('Please select a clinician and enter their message');
       return;
@@ -55,9 +54,9 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
     if (result) {
       setGeneratedReplies(result);
     }
-  };
+  }, [selectedClinicianId, incomingText, userGoal, saveUserInput, generateReply]);
 
-  const handleSelectReply = async (reply: string, index: number) => {
+  const handleSelectReply = useCallback(async (reply: string) => {
     if (!generatedReplies) return;
 
     await selectReply(generatedReplies.message_id, reply);
@@ -66,54 +65,43 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
     setIncomingText('');
     setUserGoal('');
     setGeneratedReplies(null);
-  };
+  }, [generatedReplies, selectReply]);
 
-  const handleCopyReply = async (reply: string, index: number) => {
-    await navigator.clipboard.writeText(reply);
-    setCopiedIndex(index);
-    toast.success('Copied');
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
+  const handleCopyReply = useCallback((reply: string, index: number) => {
+    navigator.clipboard.writeText(reply).then(() => {
+      setCopiedIndex(index);
+      toast.success('Copied');
+      setTimeout(() => setCopiedIndex(null), 2000);
+    });
+  }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-900">
-        <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse" />
-      </div>
-    );
-  }
+  const LoadingIndicator = () => (
+    <div className="flex items-center justify-center h-full bg-gray-900">
+      <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse" />
+    </div>
+  );
 
-  if (clinicians.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full bg-gray-900">
-        <p className="text-gray-500 text-sm font-medium">
-          No clinicians available
-        </p>
-      </div>
-    );
-  }
+  const NoCliniciansPlaceholder = () => (
+    <div className="flex flex-col items-center justify-center h-full bg-gray-900">
+      <p className="text-gray-500 text-sm font-medium">No clinicians available</p>
+    </div>
+  );
+
+  if (isLoading) return <LoadingIndicator />;
+  if (clinicians.length === 0) return <NoCliniciansPlaceholder />;
 
   return (
     <div className="h-full flex flex-col bg-[#262626]">
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-xl mx-auto px-6 py-16 space-y-12">
-          {/* Header */}
           <div className="space-y-4">
-            <h1 className="text-3xl font-semibold text-white">
-              Reply Assistant
-            </h1>
-            <p className="text-gray-400 text-sm">
-              Intelligent responses, tailored just for you
-            </p>
+            <h1 className="text-3xl font-semibold text-white">Reply Assistant</h1>
+            <p className="text-gray-400 text-sm">Intelligent responses, tailored just for you</p>
           </div>
 
-          {/* Input Section */}
           <div className="space-y-8">
-            {/* Clinician Selection */}
             <div className="space-y-3">
-              <label className="block text-sm text-gray-400 tracking-wide">
-                Clinician
-              </label>
+              <label className="block text-sm text-gray-400 tracking-wide">Clinician</label>
               <select
                 value={selectedClinicianId}
                 onChange={(e) => setSelectedClinicianId(e.target.value)}
@@ -127,11 +115,8 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
               </select>
             </div>
 
-            {/* Incoming Message */}
             <div className="space-y-3">
-              <label className="block text-sm text-gray-400 tracking-wide">
-                Incoming Message
-              </label>
+              <label className="block text-sm text-gray-400 tracking-wide">Incoming Message</label>
               <textarea
                 value={incomingText}
                 onChange={(e) => setIncomingText(e.target.value)}
@@ -141,11 +126,8 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
               />
             </div>
 
-            {/* User Goal */}
             <div className="space-y-3">
-              <label className="block text-sm text-gray-400 tracking-wide">
-                Goal <span className="text-gray-500">(Optional)</span>
-              </label>
+              <label className="block text-sm text-gray-400 tracking-wide">Goal <span className="text-gray-500">(Optional)</span></label>
               <input
                 type="text"
                 value={userGoal}
@@ -155,7 +137,6 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
               />
             </div>
 
-            {/* Generate Button */}
             <div>
               <button
                 onClick={handleGenerateReply}
@@ -167,7 +148,6 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
             </div>
           </div>
 
-          {/* Generated Replies */}
           {generatedReplies && (
             <div className="space-y-8 pt-8">
               {[generatedReplies.reply_1, generatedReplies.reply_2].map((reply, index) => (
@@ -175,12 +155,8 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
                   key={index}
                   className="space-y-4 p-4 border border-gray-700 rounded-lg"
                 >
-                  <div className="text-sm text-gray-400 tracking-wide">
-                    Option {index + 1}
-                  </div>
-                  <p className="text-white whitespace-pre-wrap">
-                    {reply}
-                  </p>
+                  <div className="text-sm text-gray-400 tracking-wide">Option {index + 1}</div>
+                  <p className="text-white whitespace-pre-wrap">{reply}</p>
 
                   <div className="flex gap-4">
                     <button
@@ -190,7 +166,7 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
                       {copiedIndex === index ? 'Copied' : 'Copy'}
                     </button>
                     <button
-                      onClick={() => handleSelectReply(reply, index)}
+                      onClick={() => handleSelectReply(reply)}
                       className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-150"
                     >
                       Use Reply
@@ -201,14 +177,11 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
             </div>
           )}
 
-          {/* Selected Clinician Info */}
           {selectedClinician && !generatedReplies && (
             <div className="pt-8">
               <div className="flex justify-between text-sm text-gray-500">
                 <span>{selectedClinician.full_name}</span>
-                {selectedClinician.email && (
-                  <span>{selectedClinician.email}</span>
-                )}
+                {selectedClinician.email && <span>{selectedClinician.email}</span>}
               </div>
             </div>
           )}
@@ -216,4 +189,6 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
       </div>
     </div>
   );
-}
+});
+
+export default ReplyAssistantInterface;
