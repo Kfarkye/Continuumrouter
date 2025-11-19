@@ -232,11 +232,17 @@ export const useAiRouterChat = ({
           .eq('session_id', sessionId)
           .maybeSingle();
 
-        if (convError) throw convError;
+        if (convError) {
+          console.error('[History] Conversation lookup error:', convError);
+          throw convError;
+        }
         if (!conversation) {
+          debugLog('📭 No conversation found for session', { sessionId });
           if (!cancelled) dispatch({ type: 'HISTORY_LOADED', payload: [] });
           return;
         }
+
+        debugLog('📂 Found conversation', { conversationId: conversation.id, sessionId });
 
         // Load the most recent messages (last 50)
         const { data: history, error: historyError } = await supabase
