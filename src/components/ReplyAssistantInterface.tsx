@@ -77,16 +77,16 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full bg-black">
-        <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
+      <div className="flex items-center justify-center h-full bg-gray-900">
+        <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse" />
       </div>
     );
   }
 
   if (clinicians.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-black">
-        <p className="text-white/40 text-sm font-light tracking-wide">
+      <div className="flex flex-col items-center justify-center h-full bg-gray-900">
+        <p className="text-gray-500 text-sm font-medium">
           No clinicians available
         </p>
       </div>
@@ -94,16 +94,16 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
   }
 
   return (
-    <div className="h-full flex flex-col bg-black">
+    <div className="h-full flex flex-col bg-[#262626]">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-8 py-16 space-y-12">
+        <div className="max-w-xl mx-auto px-6 py-16 space-y-12">
           {/* Header */}
-          <div className="space-y-2">
-            <h1 className="text-4xl font-light tracking-tight text-white">
+          <div className="space-y-4">
+            <h1 className="text-3xl font-semibold text-white">
               Reply Assistant
             </h1>
-            <p className="text-white/40 font-light tracking-wide text-sm">
-              Intelligent responses, crafted for you
+            <p className="text-gray-400 text-sm">
+              Intelligent responses, tailored just for you
             </p>
           </div>
 
@@ -111,21 +111,16 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
           <div className="space-y-8">
             {/* Clinician Selection */}
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
+              <label className="block text-sm text-gray-400 tracking-wide">
                 Clinician
               </label>
               <select
                 value={selectedClinicianId}
                 onChange={(e) => setSelectedClinicianId(e.target.value)}
-                className="w-full px-0 py-4 bg-transparent border-0 border-b border-white/10 text-white text-base font-light focus:outline-none focus:border-white/40 transition-colors appearance-none cursor-pointer"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23ffffff' stroke-opacity='0.3' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0 center',
-                }}
+                className="w-full px-4 py-3 bg-[#333333] border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition ease-in-out"
               >
                 {clinicians.map(clinician => (
-                  <option key={clinician.id} value={clinician.id} className="bg-zinc-900">
+                  <option key={clinician.id} value={clinician.id} className="bg-[#333333]">
                     {clinician.full_name}
                   </option>
                 ))}
@@ -134,7 +129,7 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
 
             {/* Incoming Message */}
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
+              <label className="block text-sm text-gray-400 tracking-wide">
                 Incoming Message
               </label>
               <textarea
@@ -142,30 +137,30 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
                 onChange={(e) => setIncomingText(e.target.value)}
                 placeholder="Enter the message..."
                 rows={6}
-                className="w-full px-0 py-4 bg-transparent border-0 border-b border-white/10 text-white text-base font-light placeholder-white/20 focus:outline-none focus:border-white/40 transition-colors resize-none"
+                className="w-full px-4 py-3 bg-[#333333] border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition ease-in-out resize-none"
               />
             </div>
 
             {/* User Goal */}
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-white/60 uppercase tracking-wider">
-                Goal <span className="text-white/30">(Optional)</span>
+              <label className="block text-sm text-gray-400 tracking-wide">
+                Goal <span className="text-gray-500">(Optional)</span>
               </label>
               <input
                 type="text"
                 value={userGoal}
                 onChange={(e) => setUserGoal(e.target.value)}
                 placeholder="What would you like to achieve?"
-                className="w-full px-0 py-4 bg-transparent border-0 border-b border-white/10 text-white text-base font-light placeholder-white/20 focus:outline-none focus:border-white/40 transition-colors"
+                className="w-full px-4 py-3 bg-[#333333] border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition ease-in-out"
               />
             </div>
 
             {/* Generate Button */}
-            <div className="pt-4">
+            <div>
               <button
                 onClick={handleGenerateReply}
                 disabled={isGenerating || !incomingText.trim()}
-                className="w-full px-8 py-5 bg-white hover:bg-white/90 disabled:bg-white/30 text-black text-sm font-medium tracking-wide rounded-2xl transition-all duration-200 disabled:cursor-not-allowed"
+                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium rounded-lg transition-all duration-150 disabled:cursor-not-allowed"
               >
                 {isGenerating ? 'Generating...' : 'Generate Replies'}
               </button>
@@ -174,31 +169,29 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
 
           {/* Generated Replies */}
           {generatedReplies && (
-            <div className="space-y-8 pt-8 border-t border-white/5">
+            <div className="space-y-8 pt-8">
               {[generatedReplies.reply_1, generatedReplies.reply_2].map((reply, index) => (
                 <div
                   key={index}
-                  className="space-y-6 pb-8 border-b border-white/5 last:border-0"
+                  className="space-y-4 p-4 border border-gray-700 rounded-lg"
                 >
-                  <div className="space-y-4">
-                    <div className="text-xs font-medium text-white/40 uppercase tracking-wider">
-                      Option {index + 1}
-                    </div>
-                    <p className="text-base font-light text-white/90 leading-relaxed whitespace-pre-wrap">
-                      {reply}
-                    </p>
+                  <div className="text-sm text-gray-400 tracking-wide">
+                    Option {index + 1}
                   </div>
+                  <p className="text-white whitespace-pre-wrap">
+                    {reply}
+                  </p>
 
-                  <div className="flex gap-3">
+                  <div className="flex gap-4">
                     <button
                       onClick={() => handleCopyReply(reply, index)}
-                      className="flex-1 px-6 py-4 bg-white/5 hover:bg-white/10 text-white text-sm font-medium tracking-wide rounded-xl transition-all duration-200"
+                      className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all duration-150"
                     >
                       {copiedIndex === index ? 'Copied' : 'Copy'}
                     </button>
                     <button
                       onClick={() => handleSelectReply(reply, index)}
-                      className="flex-1 px-6 py-4 bg-white hover:bg-white/90 text-black text-sm font-medium tracking-wide rounded-xl transition-all duration-200"
+                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-150"
                     >
                       Use Reply
                     </button>
@@ -210,8 +203,8 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
 
           {/* Selected Clinician Info */}
           {selectedClinician && !generatedReplies && (
-            <div className="pt-8 border-t border-white/5">
-              <div className="flex items-baseline justify-between text-xs text-white/30 font-light tracking-wide">
+            <div className="pt-8">
+              <div className="flex justify-between text-sm text-gray-500">
                 <span>{selectedClinician.full_name}</span>
                 {selectedClinician.email && (
                   <span>{selectedClinician.email}</span>
