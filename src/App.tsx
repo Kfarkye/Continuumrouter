@@ -18,6 +18,7 @@ const ChatInterface = lazy(() => import('./components/ChatInterface'));
 const DeepThinkInterface = lazy(() => import('./components/DeepThinkInterface').then(module => ({ default: module.DeepThinkInterface })));
 const TutorialInterface = lazy(() => import('./components/TutorialInterface').then(module => ({ default: module.TutorialInterface })));
 const RecruiterDashboard = lazy(() => import('./components/RecruiterDashboard').then(module => ({ default: module.RecruiterDashboard })));
+const ReplyAssistantInterface = lazy(() => import('./components/ReplyAssistantInterface').then(module => ({ default: module.ReplyAssistantInterface })));
 
 // Loading Spinner Component
 const LoadingSpinner: React.FC<{ message?: string, fullScreen?: boolean }> = ({ message = "Loading...", fullScreen = false }) => {
@@ -123,7 +124,7 @@ const App: React.FC = () => {
     toast.success('Signed out successfully');
   }, []);
 
-  const handleModeChange = useCallback((mode: 'chat' | 'deepthink' | 'tutorial' | 'dashboard') => {
+  const handleModeChange = useCallback((mode: 'chat' | 'deepthink' | 'tutorial' | 'dashboard' | 'reply_assistant') => {
     setAppState(prev => ({ ...prev, mode }));
   }, []);
 
@@ -137,6 +138,10 @@ const App: React.FC = () => {
 
   const navigateToDashboard = useCallback(() => {
     handleModeChange('dashboard');
+  }, [handleModeChange]);
+
+  const navigateToReplyAssistant = useCallback(() => {
+    handleModeChange('reply_assistant');
   }, [handleModeChange]);
 
   // Sidebar Props
@@ -164,10 +169,16 @@ const App: React.FC = () => {
     onSessionDelete: deleteSession,
     onSessionUpdate: updateSession,
     onSignOut: handleSignOut,
-    activeSection: appState.mode === 'deepthink' ? 'research' : appState.mode === 'tutorial' ? 'build_mode' : appState.mode === 'dashboard' ? 'dashboard' : 'conversations',
+    activeSection: appState.mode === 'deepthink' ? 'research' : appState.mode === 'tutorial' ? 'build_mode' : appState.mode === 'dashboard' ? 'dashboard' : appState.mode === 'reply_assistant' ? 'reply_assistant' : 'conversations',
     onNavigateToDeepThink: navigateToDeepThink,
     onNavigateToTutorial: navigateToTutorial,
     onNavigateToDashboard: navigateToDashboard,
+    onNavigate: (section) => {
+      if (section === 'reply_assistant') navigateToReplyAssistant();
+      else if (section === 'dashboard') navigateToDashboard();
+      else if (section === 'research') navigateToDeepThink();
+      else if (section === 'build_mode') navigateToTutorial();
+    },
     userId: session?.user?.id,
     isSidebarCollapsed,
     onToggleSidebar: toggleSidebarCollapse,
@@ -284,7 +295,7 @@ const App: React.FC = () => {
                </button>
                <div className="flex items-center gap-2">
                   <h1 className="text-base font-semibold text-white">
-                     {appState.mode === 'deepthink' ? 'DeepThink' : appState.mode === 'tutorial' ? 'Tutorial Mode' : appState.mode === 'dashboard' ? 'Dashboard' : 'Continuum'}
+                     {appState.mode === 'deepthink' ? 'DeepThink' : appState.mode === 'tutorial' ? 'Tutorial Mode' : appState.mode === 'dashboard' ? 'Dashboard' : appState.mode === 'reply_assistant' ? 'Reply Assistant' : 'Continuum'}
                   </h1>
                </div>
                <button
@@ -304,6 +315,10 @@ const App: React.FC = () => {
                 <Suspense fallback={<LoadingSpinner message="Loading interface..." />}>
                     {isDataLoading ? (
                        <LoadingSpinner message="Loading your data..." />
+                    ) : appState.mode === 'reply_assistant' ? (
+                       <div className="h-full overflow-y-auto">
+                          <ReplyAssistantInterface userId={session.user.id} />
+                       </div>
                     ) : appState.mode === 'dashboard' ? (
                        <div className="h-full overflow-y-auto p-6">
                           <RecruiterDashboard />

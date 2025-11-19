@@ -274,10 +274,80 @@ export interface MemorySpace {
   updated_at: string;
 }
 
+export interface CommunicationProfile {
+  id: string;
+  clinician_id: string;
+  user_id: string;
+  communication_style: 'warm_friendly' | 'direct_brief' | 'professional_formal' | 'casual_relaxed';
+  notes: string | null;
+  last_contacted: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReplyThread {
+  id: string;
+  user_id: string;
+  project_id: string | null;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReplyMessage {
+  id: string;
+  thread_id: string;
+  user_id: string;
+  clinician_id: string | null;
+  message_type: 'user_input' | 'ai_response' | 'system';
+  incoming_text: string | null;
+  user_goal: string | null;
+  generated_reply_1: string | null;
+  generated_reply_2: string | null;
+  selected_reply: string | null;
+  metadata: Record<string, any>;
+  created_at: string;
+}
+
+export interface ClinicianInteraction {
+  id: string;
+  clinician_id: string;
+  user_id: string;
+  interaction_type: 'text_reply' | 'phone_call' | 'email' | 'extension_request' | 'issue_resolution' | 'other';
+  interaction_summary: string | null;
+  interaction_date: string;
+}
+
+export interface ClinicianFullProfile extends ClinicianProfile {
+  communication_style: string | null;
+  notes: string | null;
+  last_contacted: string | null;
+}
+
+export interface ClinicianReplyContext {
+  full_name: string;
+  email: string;
+  phone: string | null;
+  communication_style: string;
+  profile_notes: string | null;
+  assignment_facility: string | null;
+  assignment_end_date: string | null;
+  days_remaining: number | null;
+  recent_interactions: Array<{
+    type: string;
+    summary: string | null;
+    date: string;
+  }> | null;
+  golden_notes: Array<{
+    content: string;
+    created_at: string;
+  }> | null;
+}
+
 export interface AppState {
   currentSessionId: string | null;
   sidebarOpen: boolean;
-  mode?: 'chat' | 'deepthink' | 'tutorial' | 'dashboard';
+  mode?: 'chat' | 'deepthink' | 'tutorial' | 'dashboard' | 'reply_assistant';
 }
 
 export enum PromptCategory {

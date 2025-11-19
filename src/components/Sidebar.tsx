@@ -73,7 +73,7 @@ const useMediaQuery = (query: string) => {
 // TYPES & INTERFACES
 // ============================================================================
 
-type SectionType = 'conversations' | 'dashboard' | 'research' | 'build_mode' | 'tools' | 'system_rules' | 'storage' | 'import' | 'settings' | 'signout';
+type SectionType = 'conversations' | 'dashboard' | 'reply_assistant' | 'research' | 'build_mode' | 'tools' | 'system_rules' | 'storage' | 'import' | 'settings' | 'signout';
 
 interface SidebarProps {
   spaces: AISpace[];
@@ -127,6 +127,7 @@ interface NavItemType {
 const NAVIGATION_SECTIONS: NavItemType[] = [
   { id: 'conversations', label: 'Conversations', icon: MessageSquare, origin: 'history', action: 'modal', description: 'View history', group: 'Workspace' },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, origin: 'dashboard', action: 'navigate', description: 'Overview', group: 'Workspace' },
+  { id: 'reply_assistant', label: 'Reply Assistant', icon: MessageSquare, origin: 'reply_assistant', action: 'navigate', description: 'AI text replies', group: 'Workspace' },
   { id: 'research', label: 'Research', icon: Microscope, origin: 'deepthink', action: 'navigate', description: 'Deep analysis', group: 'Workspace' },
   { id: 'build_mode', label: 'Build Mode', icon: Hammer, origin: 'tutorial', action: 'navigate', description: 'Builders', group: 'Workspace' },
   { id: 'tools', label: 'Tools', icon: Wrench, origin: 'tools', action: 'navigate', description: 'Utilities', group: 'Resources' },
