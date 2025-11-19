@@ -48,7 +48,9 @@ export interface ChatSession {
   id: string;
   title: string | null;
   createdAt: string;
+  updated_at?: string;
   project_id?: string;
+  messages?: { length: number };
 }
 
 export interface StoredFile {

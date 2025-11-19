@@ -96,7 +96,7 @@ export const useSupabaseData = () => {
     try {
       const { data: sessionData, error: sessionError } = await supabase
         .from('ai_conversations')
-        .select('session_id, title, created_at, project_id')
+        .select('id, session_id, title, created_at, updated_at, project_id')
         .eq('user_id', userId)
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
@@ -104,7 +104,25 @@ export const useSupabaseData = () => {
       if (sessionError) {
         console.error('Error fetching sessions:', sessionError);
       } else {
-        setSessions((sessionData || []).map(s => ({ id: s.session_id, title: s.title, createdAt: s.created_at, project_id: s.project_id })));
+        // Fetch message counts for each session
+        const sessionsWithCounts = await Promise.all(
+          (sessionData || []).map(async (s) => {
+            const { count } = await supabase
+              .from('ai_messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('conversation_id', s.id);
+
+            return {
+              id: s.session_id,
+              title: s.title,
+              createdAt: s.created_at,
+              updated_at: s.updated_at,
+              project_id: s.project_id,
+              messages: { length: count || 0 }
+            };
+          })
+        );
+        setSessions(sessionsWithCounts);
       }
 
       const { data: fileData, error: fileError } = await supabase
@@ -152,7 +170,14 @@ export const useSupabaseData = () => {
     }
 
     if (data) {
-        setSessions(prev => [{ id: data.session_id, title: data.title, createdAt: data.created_at, project_id: data.project_id }, ...prev]);
+        setSessions(prev => [{
+          id: data.session_id,
+          title: data.title,
+          createdAt: data.created_at,
+          updated_at: data.updated_at,
+          project_id: data.project_id,
+          messages: { length: 0 }
+        }, ...prev]);
     }
 
     return newSessionId;
