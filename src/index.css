@@ -1,0 +1,740 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -------------------------------------------------------------------------- */
+/* iOS SAFE AREA SUPPORT (CRITICAL)                                           */
+/* -------------------------------------------------------------------------- */
+@supports (padding: max(0px)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* PREMIUM STREAMING CURSOR (Required for MessageBubble)                      */
+/* -------------------------------------------------------------------------- */
+@keyframes cursor-pulse-premium {
+  0% { opacity: 1; }
+  50% { opacity: 0.1; }
+  100% { opacity: 1; }
+}
+
+.cursor-premium {
+  animation: cursor-pulse-premium 1.2s steps(1, end) infinite;
+  background-color: rgb(228, 228, 231); /* zinc-200 */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-premium {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* BASE STYLES & ATMOSPHERE                                                   */
+/* -------------------------------------------------------------------------- */
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    /* Refined typography - Using Inter for modern feel */
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    letter-spacing: -0.005em;
+
+    /* ATMOSPHERIC BACKGROUND: Deep charcoal instead of pure black */
+    background-color: #09090b; /* zinc-950 */
+    color: #E4E4E7; /* zinc-200 */
+
+    /* Subtle Atmospheric Gradient for Depth */
+    background-image: radial-gradient(circle at 50% 0%, rgba(39, 39, 42, 0.3) 0%, rgba(9, 9, 11, 0) 50%);
+    background-attachment: fixed;
+
+    /* Prevent pull-to-refresh on iOS */
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* UTILITIES & ANIMATIONS                                                     */
+/* -------------------------------------------------------------------------- */
+
+@layer utilities {
+
+  /* Custom Scrollbar - Refined for the premium aesthetic */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    /* Thumb is subtle, visible on hover/scroll */
+    background: rgba(113, 113, 122, 0.3); /* zinc-500 */
+    border-radius: 4px;
+    transition: background 0.2s ease-in-out;
+  }
+
+  /* Thumb more visible when container is hovered */
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: rgba(113, 113, 122, 0.5);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(161, 161, 170, 0.7); /* zinc-400 */
+  }
+
+  /* For Firefox */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(113, 113, 122, 0.3) transparent;
+  }
+
+  /* Highlight flash animation for navigating to messages */
+  @keyframes highlightFlash {
+    0%, 100% {
+      --tw-bg-opacity: 0;
+    }
+    50% {
+      --tw-bg-opacity: 0.15;
+      background-color: rgba(59, 130, 246, var(--tw-bg-opacity));
+    }
+  }
+
+  /* Purple/Pink Glassmorphism Glow Effects */
+  .shadow-glow {
+    box-shadow: 0 0 30px rgba(168, 85, 247, 0.3), 0 0 60px rgba(236, 72, 153, 0.2);
+  }
+
+  .shadow-glow-purple {
+    box-shadow: 0 0 35px rgba(168, 85, 247, 0.4), 0 0 70px rgba(147, 51, 234, 0.3);
+  }
+
+  .shadow-glow-pink {
+    box-shadow: 0 0 35px rgba(236, 72, 153, 0.4), 0 0 70px rgba(219, 39, 119, 0.3);
+  }
+
+  .shadow-glow-sm {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.2), 0 0 40px rgba(236, 72, 153, 0.15);
+  }
+
+  /* Liquid Glass Frosted Background */
+  .glass-frosted {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
+
+  .glass-frosted-hover {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(32px) saturate(200%);
+    -webkit-backdrop-filter: blur(32px) saturate(200%);
+  }
+
+  /* Shimmer Animation for Premium Feel */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  .highlight-flash {
+    transition: background-color 0.3s ease;
+    animation: highlightFlash 2s ease-in-out;
+  }
+
+  /* Spinner Animation */
+  @keyframes spinner-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .spinner {
+    animation: spinner-rotate 0.8s cubic-bezier(0.4, 0.15, 0.6, 0.85) infinite;
+    will-change: transform;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .spinner {
+    animation: none !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* LIQUID GLASS - APPLE-GRADE MATERIALS                                       */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --glass-blur-light: 40px;
+  --glass-blur-heavy: 80px;
+  --glass-saturation: 180%;
+  --glass-brightness: 108%;
+}
+
+/* User Message Glass */
+.liquid-glass-user {
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.12) 0%,
+    rgba(147, 51, 234, 0.11) 35%,
+    rgba(236, 72, 153, 0.12) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-light)) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
+  -webkit-backdrop-filter: blur(var(--glass-blur-light)) saturate(var(--glass-saturation)) brightness(var(--glass-brightness));
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.08) inset,
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 2px 4px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(168, 85, 247, 0.08),
+    0 0 60px rgba(168, 85, 247, 0.04);
+}
+
+/* Assistant Message Glass */
+.liquid-glass-assistant {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.018) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(200%) brightness(106%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(200%) brightness(106%);
+  border-top: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.03) inset,
+    0 0.5px 1px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Avatar Glass */
+.liquid-glass-avatar {
+  background: linear-gradient(
+    135deg,
+    rgba(168, 85, 247, 0.16) 0%,
+    rgba(236, 72, 153, 0.14) 100%
+  );
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.1) inset,
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 4px 12px rgba(168, 85, 247, 0.12),
+    0 0 24px rgba(168, 85, 247, 0.06);
+}
+
+/* Button Glass */
+.liquid-glass-button {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05) inset,
+    0 0.5px 1px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.liquid-glass-button:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.08) inset,
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 2px 4px rgba(0, 0, 0, 0.08);
+  transform: translateY(-0.5px);
+}
+
+.liquid-glass-button:active {
+  transform: translateY(0);
+}
+
+/* Error Glass */
+.liquid-glass-error {
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.08) 0%,
+    rgba(220, 38, 38, 0.07) 100%
+  );
+  backdrop-filter: blur(40px) saturate(140%);
+  -webkit-backdrop-filter: blur(40px) saturate(140%);
+  border: 0.5px solid rgba(239, 68, 68, 0.22);
+  box-shadow:
+    0 0 0 0.5px rgba(239, 68, 68, 0.12) inset,
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 2px 4px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(239, 68, 68, 0.08);
+}
+
+/* Code Preview Glass */
+.liquid-glass-code {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.32) 0%,
+    rgba(0, 0, 0, 0.28) 100%
+  );
+  backdrop-filter: blur(30px) saturate(150%) brightness(95%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%) brightness(95%);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.3) inset,
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 4px 8px rgba(0, 0, 0, 0.08),
+    0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+/* Reduced Motion Support for Liquid Glass */
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-user,
+  .liquid-glass-assistant,
+  .liquid-glass-avatar,
+  .liquid-glass-button,
+  .liquid-glass-error,
+  .liquid-glass-code {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* PREMIUM IMAGE UPLOAD PREVIEW                                               */
+/* -------------------------------------------------------------------------- */
+
+/* Container with glassmorphism */
+.file-upload-preview-container {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(236, 72, 153, 0.08));
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header with counts and clear button */
+.file-upload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.file-count-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.attachment-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.attachment-count svg {
+  width: 16px;
+  height: 16px;
+  color: rgba(168, 85, 247, 0.8);
+}
+
+.total-size {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.clear-files-btn {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-files-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: rgba(239, 68, 68, 0.9);
+}
+
+/* Image Grid Layout */
+.image-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  max-width: 600px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 640px) {
+  .image-preview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+  }
+}
+
+/* Individual Image Preview Item */
+.image-preview-item {
+  position: relative;
+  aspect-ratio: 1/1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  animation: imageAppear 0.3s ease-out;
+}
+
+@keyframes imageAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.image-thumbnail-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.2s ease;
+}
+
+.image-preview-item:hover .image-thumbnail-wrapper {
+  transform: scale(1.05);
+}
+
+.image-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Remove Button */
+.remove-image-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  color: white;
+  z-index: 10;
+}
+
+.image-preview-item:hover .remove-image-btn {
+  opacity: 1;
+}
+
+.remove-image-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: rgba(239, 68, 68, 0.5);
+  transform: scale(1.1);
+}
+
+.remove-image-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Upload Progress Overlay */
+.upload-progress-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.upload-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+  transition: width 0.3s ease;
+  border-radius: 0 0 12px 12px;
+}
+
+.upload-progress-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* Upload Error Overlay */
+.upload-error-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  backdrop-filter: blur(4px);
+}
+
+.upload-error-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(239, 68, 68, 0.9);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.retry-upload-btn {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  background: rgba(239, 68, 68, 0.8);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.retry-upload-btn:hover {
+  background: rgba(239, 68, 68, 1);
+  transform: scale(1.05);
+}
+
+/* Image Info (filename and size) */
+.image-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 6px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-preview-item:hover .image-info {
+  opacity: 1;
+}
+
+.image-filename {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-size {
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* File List (for non-image files) */
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  transition: all 0.2s;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.file-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.file-icon {
+  color: rgba(168, 85, 247, 0.8);
+  flex-shrink: 0;
+}
+
+.file-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.remove-file-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.remove-file-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgba(239, 68, 68, 0.9);
+}
+
+/* Upload Status Message */
+.upload-status-message {
+  margin-top: 8px;
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(168, 85, 247, 0.9);
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 8px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Touch Target Optimization (Mobile) */
+@media (max-width: 640px) {
+  .remove-image-btn,
+  .remove-file-btn {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .image-preview-item:hover .remove-image-btn {
+    opacity: 1;
+  }
+  
+  /* Always show on mobile since no hover */
+  .remove-image-btn {
+    opacity: 0.9;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .file-upload-preview-container,
+  .image-preview-item,
+  .file-item {
+    animation: none !important;
+  }
+  
+  .image-thumbnail-wrapper,
+  .remove-image-btn,
+  .remove-file-btn,
+  .retry-upload-btn {
+    transition: none !important;
+  }
+}

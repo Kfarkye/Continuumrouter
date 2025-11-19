@@ -1,0 +1,71 @@
+{
+  "name": "deepthink_lane_gemini_v2_1_plus",
+  "provider": "gemini",
+  "schema_version": "2.1++",
+  "description": "Production-grade multi-pass reasoning with Gemini 2.5 Flash/Pro, parallel solving, and hybrid verification",
+  "passes": {
+    "planner": {
+      "model": "gemini-2.0-flash-exp",
+      "cap_tokens": 6000,
+      "timeout_ms": 10000,
+      "params": {
+        "temperature": 0.0
+      },
+      "cache_ttl_seconds": 604800
+    },
+    "solver": {
+      "model": "gemini-2.0-flash-exp",
+      "cap_tokens": 24000,
+      "timeout_ms": 20000,
+      "parallel": 3,
+      "params_variants": [
+        {
+          "temperature": 0.3
+        },
+        {
+          "temperature": 0.5
+        },
+        {
+          "temperature": 0.7
+        }
+      ]
+    },
+    "verifier": {
+      "model": "gemini-2.0-flash-thinking-exp",
+      "cap_tokens": 12000,
+      "timeout_ms": 15000,
+      "params": {
+        "temperature": 0.0
+      },
+      "threshold": 0.8
+    }
+  },
+  "tools_allowlist": {
+    "web": [],
+    "db": [],
+    "file": ["pdf", "md", "txt", "json", "yaml", "ts", "tsx", "js", "jsx", "py", "sql"]
+  },
+  "retry_policy": {
+    "solver": {
+      "max_attempts": 2,
+      "backoff_ms": [500],
+      "retryable_errors": [
+        "rate_limit",
+        "transient_provider_error",
+        "schema_mismatch"
+      ]
+    }
+  },
+  "per_job_token_cap": 95000,
+  "notes": {
+    "setup_required": [
+      "Add GEMINI_API_KEY to edge function environment",
+      "Set GEMINI_RATE_IN_USD_PER_MTOK for cost tracking",
+      "Set GEMINI_RATE_OUT_USD_PER_MTOK for cost tracking",
+      "Optional: Configure SEARCH_API_URL and SEARCH_API_KEY for evidence gathering",
+      "Optional: Configure RERANKER_URL for external reranking service",
+      "Populate tools_allowlist.web with approved domains for search"
+    ],
+    "usage": "This lane is triggered when users navigate to the DeepThink space and submit complex queries requiring multi-step reasoning"
+  }
+}

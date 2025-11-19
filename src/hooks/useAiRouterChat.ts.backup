@@ -1,0 +1,426 @@
+// useAiRouterChat.ts
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { ChatMessage, StoredFile, FileAttachment, Memory } from '../types';
+import { supabase } from '../lib/supabaseClient';
+import { captureMemory, retrieveMemories } from '../services/memoryService';
+
+// -----------------------------------------------------------------------------
+// Configuration and Constants
+// -----------------------------------------------------------------------------
+
+const AI_ROUTER_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-router`;
+
+// Helper to safely attempt JSON parsing of responses
+const safeJsonParse = async (response: Response): Promise<any> => {
+    try {
+        const text = await response.text();
+        if (!text) return null;
+        return JSON.parse(text);
+    } catch {
+        return null;
+    }
+};
+
+const DEFAULT_CONFIG = {
+  IDLE_TIMEOUT_MS: 120_000,
+  RETRY_COUNT: 3, // Increased for resilience
+  RETRY_BASE_DELAY_MS: 1000,
+  RECENT_MESSAGE_LIMIT: 50,
+  MEMORY_RETRIEVAL_TIMEOUT_MS: 5000, // NEW: Timeout for memory service
+};
+
+// -----------------------------------------------------------------------------
+// Types and Interfaces
+// -----------------------------------------------------------------------------
+
+export interface ChatError {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface UseAiRouterChatArgs {
+  sessionId: string | null;
+  accessToken: string | null;
+  userId: string | null;
+  projectId?: string | null;
+  files: StoredFile[];
+  onActionRequest: (action: string, args: any) => Promise<void>;
+  selectedModel?: 'auto' | 'claude' | 'gemini' | 'gpt';
+  config?: Partial<typeof DEFAULT_CONFIG>;
+}
+
+// ENHANCEMENT: Added 'edit' reason
+type AbortReason = 'user' | 'timeout' | 'internal' | 'edit';
+
+// Discriminated Union for Stream Chunks
+interface ProgressChunk { type: 'progress'; progress: number; step: string; }
+interface ModelSwitchChunk { type: 'model_switch'; model: string; content?: string; metadata?: Record<string, unknown>; }
+interface TextChunk { type: 'text'; content: string; }
+interface ActionRequestChunk { type: 'action_request'; action: string; content: unknown; }
+interface MetadataChunk { type: 'metadata'; content: Record<string, unknown>; }
+interface ErrorChunk { type: 'error'; content: unknown; }
+interface InfoChunk { type: 'warning' | 'success'; content: unknown; }
+interface DoneChunk { type: 'done'; }
+
+type RouterChunk =
+  | ProgressChunk | ModelSwitchChunk | TextChunk | ActionRequestChunk
+  | MetadataChunk | ErrorChunk | InfoChunk | DoneChunk;
+
+// -----------------------------------------------------------------------------
+// Utility Functions and Hooks
+// -----------------------------------------------------------------------------
+
+function useLatestRef<T>(value: T) {
+    const ref = useRef(value);
+    useEffect(() => { ref.current = value; }, [value]);
+    return ref;
+}
+
+class TextAccumulator {
+    private parts: string[] = [];
+    private cache = '';
+    private consumed = 0;
+    append(s: string) { if (!s) return; this.parts.push(s); }
+    value(): string {
+        if (this.consumed < this.parts.length) {
+            const newSeg = this.parts.slice(this.consumed).join('');
+            this.cache += newSeg;
+            this.consumed = this.parts.length;
+        }
+        return this.cache;
+    }
+    clear() { this.parts = []; this.cache = ''; this.consumed = 0; }
+}
+
+function calculateRetryAfter(headerValue: string): number {
+    const seconds = parseInt(headerValue, 10);
+    if (!isNaN(seconds)) return Math.max(0, seconds * 1000);
+    const date = new Date(headerValue);
+    if (!isNaN(date.getTime())) return Math.max(0, date.getTime() - Date.now());
+    return 0;
+}
+
+// ENHANCEMENT: Improved retry logic with better jitter and error handling
+async function fetchWithRetry(url: string, options: RequestInit, retries: number, delay: number): Promise<Response> {
+    let lastErr: unknown;
+    let lastResponse: Response | null = null;
+
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const response = await fetch(url, options);
+            lastResponse = response;
+
+            if (!response.ok) {
+                const status = response.status;
+                if ((status >= 500 || status === 429) && i < retries) {
+                    const retryAfterHeader = response.headers.get('Retry-After');
+                    let backoffMs = status === 429 && retryAfterHeader ? calculateRetryAfter(retryAfterHeader) : delay * Math.pow(2, i);
+
+                    // Add Jitter (+/- 25%) to prevent thundering herd problem
+                    const jitter = (Math.random() * 0.5 - 0.25) * backoffMs;
+                    const waitTime = Math.min(60000, Math.max(100, backoffMs + jitter)); // Cap at 1 min
+
+                    console.warn(`Retrying request (Attempt ${i+1}) due to status ${status}. Waiting ${waitTime.toFixed(0)}ms.`);
+                    await new Promise((r) => setTimeout(r, waitTime));
+                    continue;
+                }
+            }
+            return response;
+        } catch (e) {
+            lastErr = e;
+            if (e instanceof DOMException && e.name === 'AbortError') throw e;
+            if (i < retries) {
+                const backoffMs = delay * Math.pow(2, i);
+                const jitter = (Math.random() * 0.5 - 0.25) * backoffMs;
+                const waitTime = Math.min(60000, Math.max(100, backoffMs + jitter));
+
+                console.warn(`Retrying request (Attempt ${i+1}) due to network error. Waiting ${waitTime.toFixed(0)}ms. Error: ${(e as Error)?.message}`);
+                await new Promise((r) => setTimeout(r, waitTime));
+                continue;
+            }
+        }
+    }
+
+    if (lastErr) {
+        throw lastErr instanceof Error ? lastErr : new Error(`All retry attempts failed due to network issues. Last error: ${String(lastErr)}`);
+    }
+
+    // Fallback if loop finishes unexpectedly (e.g., retries exhausted on failed HTTP responses)
+    if (lastResponse) return lastResponse;
+    throw new Error('fetchWithRetry failed unexpectedly.');
+}
+
+function parseLineToChunk(line: string): RouterChunk | null {
+    // ... (Implementation remains the same as it is robust)
+}
+
+
+// -----------------------------------------------------------------------------
+// Main Hook (Simplified)
+// -----------------------------------------------------------------------------
+
+export const useAiRouterChat = ({
+  sessionId,
+  accessToken,
+  userId,
+  projectId,
+  files,
+  onActionRequest,
+  selectedModel = 'auto',
+  config: customConfig,
+}: UseAiRouterChatArgs) => {
+  const CONFIG = useMemo(() => ({ ...DEFAULT_CONFIG, ...customConfig }), [customConfig]);
+
+  // Core state (Pagination state removed)
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const [currentProgress, setCurrentProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState('');
+  const [error, setError] = useState<ChatError | null>(null);
+
+  // Stable refs and control flow
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const abortReasonRef = useRef<AbortReason | null>(null);
+  const mountedRef = useRef(true);
+  const onActionRequestRef = useLatestRef(onActionRequest);
+  const isSendingRef = useLatestRef(isSending);
+
+  // RAF-Throttled Streaming Accumulators
+  const assistantTextAccRef = useRef(new TextAccumulator());
+  const assistantMessageIdRef = useRef<string | null>(null);
+  const assistantMetadataRef = useRef<Record<string, unknown>>({});
+  const assistantStatusRef = useRef<'streaming' | 'complete' | 'error'>('streaming');
+  const assistantProgressRef = useRef<number>(0);
+  const assistantStepRef = useRef<string>('');
+  const rafIdRef = useRef<number | null>(null);
+
+  // O(1) file lookup map
+  const filesById = useMemo(() => {
+    const map = new Map<string, StoredFile>();
+    const fileList = Array.isArray(files) ? files : [];
+    for (const f of fileList) {
+        if (f && f.id) {
+           map.set(f.id, f);
+        }
+    }
+    return map;
+  }, [files]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (isSendingRef.current) {
+        abortReasonRef.current = 'internal';
+      }
+      abortControllerRef.current?.abort();
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+    };
+  }, [isSendingRef]);
+
+  // Load history when sessionId changes (Simplified: Load Recent Subset)
+  useEffect(() => {
+    // ... (Implementation remains the same as the robust version provided in the prompt)
+  }, [sessionId, isSendingRef, CONFIG.RECENT_MESSAGE_LIMIT]);
+
+  // scheduleAssistantCommit (RAF batching)
+  const scheduleAssistantCommit = useCallback(() => {
+    // ... (Implementation remains the same as the robust version provided in the prompt)
+  }, []);
+
+  // cancelStream
+  const cancelStream = useCallback((reason: AbortReason = 'user') => {
+    if (abortControllerRef.current && isSendingRef.current) {
+      abortReasonRef.current = reason;
+      abortControllerRef.current.abort();
+      // Provide feedback unless it's an edit (which should be seamless)
+      if (reason === 'user') {
+        setCurrentStep('Cancelling...');
+      } else if (reason !== 'edit') {
+        setCurrentStep('Stopping...');
+      }
+    }
+  }, [isSendingRef]);
+
+  // sendMessage
+  const sendMessage = useCallback(
+    async (content: string, attachedFileIds: string[], imageIds: string[] = []) => {
+      // 1. Guards and Initialization
+      // ... (Guards and Initialization remain the same)
+
+      // 2. Prepare Data and Optimistic UI Update
+      // ... (Preparation and Optimistic Update remain the same)
+
+      // 3. Network Request and Stream Processing
+      try {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = new AbortController();
+        const providerHint = selectedModel === 'auto' ? undefined : (selectedModel === 'gpt' ? 'openai' : selectedModel);
+
+        // ENHANCEMENT: Robust Memory Retrieval with Timeout
+        let relevantMemories: Memory[] = [];
+        if (accessToken && projectId) {
+          try {
+            assistantStepRef.current = 'Retrieving context...';
+            scheduleAssistantCommit();
+
+            const memoryPromise = retrieveMemories(content, accessToken, projectId);
+            // Create a timeout promise
+            const timeoutPromise = new Promise<Memory[]>((_, reject) =>
+                setTimeout(() => reject(new Error("Memory retrieval timed out")), CONFIG.MEMORY_RETRIEVAL_TIMEOUT_MS)
+            );
+
+            // Race the memory retrieval against the timeout
+            relevantMemories = await Promise.race([memoryPromise, timeoutPromise]);
+
+            if (relevantMemories.length > 0) {
+              console.log(`📚 Retrieved ${relevantMemories.length} relevant memories for context`);
+            }
+          } catch (err) {
+            // Memory retrieval failure/timeout should not block the chat request.
+            console.warn('Memory retrieval failed or timed out, continuing without memories:', err);
+          }
+        }
+
+        assistantStepRef.current = 'Contacting AI Router...';
+        scheduleAssistantCommit();
+
+        const response = await fetchWithRetry(
+          AI_ROUTER_FUNCTION_URL,
+          {
+            // ... (Request options remain the same)
+          },
+          CONFIG.RETRY_COUNT,
+          CONFIG.RETRY_BASE_DELAY_MS
+        );
+
+        // ENHANCEMENT: Improved error response parsing
+        if (!response.ok) {
+          const errorData = await safeJsonParse(response);
+          const specificErrorMessage = errorData?.error || errorData?.message;
+
+          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          if (specificErrorMessage) {
+              errorMessage = `${specificErrorMessage} (Status: ${response.status})`;
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (!response.body) throw new Error('No response body received.');
+
+        // ... (Stream Processing Loop remains the same)
+
+        // 4. Finalization (Success Path)
+        // ... (Final state updates and Memory Capture remain the same)
+
+      } catch (e: any) {
+        // 4. Finalization (Error/Abort Path)
+        setIsSending(false);
+
+        const isAbort = e instanceof DOMException && e.name === 'AbortError';
+        const abortReason = abortReasonRef.current;
+
+        // ENHANCEMENT: Handle 'edit' abort specifically
+        if (isAbort && abortReason === 'edit') {
+            // If aborted due to edit, we don't update the UI with cancellation status,
+            // as a new message is immediately incoming.
+            return;
+        }
+
+        let errorMessage: string;
+        let errorCode: string;
+        let displayStatus: string;
+
+        // Determine error message
+        // ... (Error determination logic remains the same)
+
+        // Update UI via RAF
+        const suffix = isAbort ? `\n\n(${displayStatus})` : `\n\n❌ Error: ${errorMessage}`;
+        assistantTextAccRef.current.append(suffix);
+        assistantStatusRef.current = isAbort ? 'complete' : 'error';
+        assistantProgressRef.current = isAbort ? 100 : assistantProgressRef.current;
+        assistantStepRef.current = displayStatus;
+        scheduleAssistantCommit();
+
+        // Set global error state unless it was an internal or edit abort
+        if (!(isAbort && (abortReason === 'internal' || abortReason === 'edit'))) {
+            setError({ code: errorCode, message: errorMessage, details: e?.toString() });
+        }
+      }
+    },
+    // Updated dependency array
+    [sessionId, accessToken, userId, projectId, filesById, selectedModel, CONFIG, isSendingRef, scheduleAssistantCommit, cancelStream, onActionRequestRef]
+  );
+
+
+  // regenerateMessage (Corrected)
+  const regenerateMessage = useCallback(() => {
+    if (isSendingRef.current || messages.length === 0) return;
+
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMessage) return;
+
+    const lastUserIndex = messages.lastIndexOf(lastUserMessage);
+    if (lastUserIndex === -1) return;
+
+    // Remove the user message and subsequent assistant messages.
+    // sendMessage will add the user message back optimistically.
+    setMessages(messages.slice(0, lastUserIndex));
+
+    const content = lastUserMessage.content;
+    const attachedFileIds = (lastUserMessage.metadata?.attachedFileIds as string[]) || [];
+    const imageIds = (lastUserMessage.metadata?.attachedImageIds as string[]) || [];
+
+    sendMessage(content, attachedFileIds, imageIds);
+  }, [messages, sendMessage, isSendingRef]);
+
+  // ENHANCEMENT: editMessage (Allows editing a specific user message and regenerating)
+  const editMessage = useCallback((messageId: string, newContent: string) => {
+    if (isSendingRef.current) {
+        // Cancel the current stream if one is active
+        cancelStream('edit');
+    }
+
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    const message = messages[messageIndex];
+
+    // Ensure we are editing a user message
+    if (message.role !== 'user') return;
+
+    // Remove the edited message and all subsequent messages
+    setMessages(messages.slice(0, messageIndex));
+
+    // Resend the new content with original attachments
+    const attachedFileIds = (message.metadata?.attachedFileIds as string[]) || [];
+    const imageIds = (message.metadata?.attachedImageIds as string[]) || [];
+
+    sendMessage(newContent, attachedFileIds, imageIds);
+
+  }, [messages, sendMessage, isSendingRef, cancelStream]);
+
+  // clearMessages
+  const clearMessages = useCallback(() => {
+    // ... (Implementation remains the same)
+  }, [cancelStream]);
+
+  // Return values (Simplified)
+  return {
+    messages,
+    sendMessage,
+    regenerateMessage,
+    editMessage, // NEW
+    isSending,
+    isLoadingHistory,
+    currentProgress,
+    currentStep,
+    error,
+    cancelStream: useCallback(() => cancelStream('user'), [cancelStream]),
+    clearMessages,
+  };
+};
