@@ -189,8 +189,10 @@ export async function detectSearchIntent(query: string, previousMessages?: any[]
   const highConfidencePatterns = [
     /\b(today|latest|current|now|recent|breaking|live)\b/i,
     /\b(what is|who is|when did|where is|how much)\b.*\b(today|now|currently)\b/i,
-    /\b(stock price|weather|news|score|election|result)\b/i,
+    /\b(stock price|weather|news|score|election|result|standings|game|match|tournament)\b/i,
     /\b(as of|updated|real-time|right now)\b/i,
+    /\b(sports?|nba|nfl|mlb|nhl|soccer|football|basketball|baseball|hockey)\b.*\b(score|result|game|match|schedule|standings)\b/i,
+    /\b(who (won|lost|is (winning|losing|playing)))\b/i,
   ];
 
   const mediumConfidencePatterns = [

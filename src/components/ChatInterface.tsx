@@ -845,8 +845,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         } else if (searchMode === 'auto') {
           // Run the intent detection (Cascade Pattern implementation assumed in detectSearchIntent)
           setLocalProcessingStep('detecting_intent');
+          console.log('[Agentive Search] Detecting search intent for query:', content);
+
           // Pass previous messages for context-aware detection
           const intent: SearchIntent = await detectSearchIntent(content, messages);
+          console.log('[Agentive Search] Intent detection result:', intent);
 
           // Clear intent detection step quickly
           // Use functional update to ensure we only clear if it hasn't changed
@@ -856,8 +859,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             shouldSearch = true;
             triggerSource = 'auto';
             intentComplexity = intent.complexity || 'low';
+            console.log('[Agentive Search] Auto-triggering web search with complexity:', intentComplexity);
             // Provide subtle UI feedback for auto-trigger
             toast('Smart Search activated.', { icon: <Globe className='w-4 h-4 text-blue-500'/>, duration: 1500 });
+          } else {
+            console.log('[Agentive Search] No search needed for this query');
           }
         }
 
@@ -991,9 +997,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSearchToggle = useCallback(() => {
     setSearchMode(prevMode => {
       // Cycle through Auto -> Manual -> Off
-      if (prevMode === 'auto') return 'manual';
-      if (prevMode === 'manual') return 'off';
-      return 'auto';
+      let newMode: SearchMode;
+      if (prevMode === 'auto') newMode = 'manual';
+      else if (prevMode === 'manual') newMode = 'off';
+      else newMode = 'auto';
+
+      console.log('[Agentive Search] Search mode changed:', prevMode, '->', newMode);
+      const modeLabels = { auto: 'Smart Search: Auto', manual: 'Smart Search: Manual', off: 'Smart Search: Off' };
+      toast.success(modeLabels[newMode], { duration: 2000 });
+
+      return newMode;
     });
   }, []);
 
