@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronDown, Trash2, RefreshCw, AlertCircle, Check,
   X, Edit2, Code2, Zap, Loader2, ArrowDown,
-  MoreVertical, Download, Settings
+  MoreVertical, Download, Settings, Search as SearchIcon, Globe
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -35,7 +35,7 @@ import {
   getFileSizeEstimate,
 } from '../utils/exportUtils';
 import { trackExport } from '../lib/analytics';
-import { getSearchService, detectSearchIntent } from '../services/searchService';
+import { getSearchService, detectSearchIntent, SearchIntent } from '../services/searchService';
 
 // MARK: Types
 import { StoredFile, SavedSchema, ImageAttachment, CodeSnippet, LocalFileAttachment, ChatMessage } from '../types';
@@ -82,6 +82,12 @@ const SUGGESTED_PROMPTS = [
   { title: "Extract Action Items", prompt: "Review the content and extract a clear list of actionable tasks, deadlines, and next steps." },
   { title: "Brainstorm Ideas", prompt: "Act as a thinking partner. Expand on the current topic, suggest alternative perspectives, and generate new ideas." }
 ];
+
+// *** NEW: Types for Agentive Search State ***
+// 'auto' = Use intent detection. 'manual' = Force ON for next message. 'off' = Force OFF for next message.
+type SearchMode = 'auto' | 'manual' | 'off';
+// Tracks localized processing steps (distinct from backend steps)
+type LocalProcessingStep = 'detecting_intent' | 'searching_web' | 'uploading' | null;
 
 
 // ============================================================================
@@ -134,7 +140,8 @@ const ScrollToBottomButton: React.FC<{ onClick: () => void }> = React.memo(({ on
   </motion.button>
 ));
 
-const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName: string | null; }> = React.memo(({ step, progress, modelName }) => (
+// *** ENHANCEMENT: Granular Processing Indicator ***
+const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName: string | null; icon?: React.ReactNode }> = React.memo(({ step, progress, modelName, icon }) => (
   <motion.div
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
@@ -142,22 +149,26 @@ const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName:
     transition={{ duration: 0.2 }}
     className="flex items-center gap-3 px-4 py-3 bg-zinc-900/80 backdrop-blur-sm border border-white/[0.08] rounded-xl shadow-md mx-auto my-4 max-w-md"
     role="status"
-    aria-label="AI Processing Status"
+    aria-label="Processing Status"
   >
-    <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+    {/* Use custom icon if provided, otherwise default spinner */}
+    {icon ? icon : <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />}
     <div className="flex-1">
       <p className="text-sm font-medium text-zinc-200">
         {step || 'Processing...'} {modelName && <span className='text-zinc-400 font-normal'>({modelName})</span>}
       </p>
-      <div
-        className="w-full bg-zinc-700 rounded-full h-1 mt-1.5 overflow-hidden"
-        role="progressbar"
-        aria-valuenow={progress}
-        aria-valuemin={0}
-        aria-valuemax={100}
-       >
-        <div className="bg-blue-500 h-1 transition-all duration-500" style={{ width: `${Math.max(10, progress)}%` }} />
-      </div>
+      {/* Only show progress bar if progress is meaningful */}
+      {progress > 0 && (
+          <div
+            className="w-full bg-zinc-700 rounded-full h-1 mt-1.5 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            >
+            <div className="bg-blue-500 h-1 transition-all duration-500" style={{ width: `${Math.max(10, progress)}%` }} />
+          </div>
+      )}
     </div>
   </motion.div>
 ));
@@ -272,9 +283,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
   const [showSpacesIntro, setShowSpacesIntro] = useState(false);
 
-  const [searchEnabled, setSearchEnabled] = useState(false);
+  // *** REFACTORED: Search and Processing State ***
+  // Default to Agentive mode ('auto')
+  const [searchMode, setSearchMode] = useState<SearchMode>('auto');
   const [searchResults, setSearchResults] = useState<any>(null);
-  const [isSearching, setIsSearching] = useState(false);
+  // Unified local processing state
+  const [localProcessingStep, setLocalProcessingStep] = useState<LocalProcessingStep>(null);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -296,6 +310,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const contextEnabled = useFeatureFlag('pinned_context');
   const exportEnabled = useFeatureFlag('export_conversation');
+  // *** NEW: Feature flag for the Agentive system itself ***
+  const agentiveSearchEnabled = useFeatureFlag('agentive_web_search');
 
   const {
     context,
@@ -434,10 +450,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const modelKeys = useMemo(() => Object.keys(MODEL_CONFIGS) as AiModelKey[], []);
 
   const isUploading = useMemo(() => imageAttachments.some(img => img.isUploading), [imageAttachments]);
+  const isLocalProcessing = useMemo(() => localProcessingStep !== null, [localProcessingStep]);
 
+  // Determine if the AI backend is actively generating a response
   const isProcessing = useMemo(() => {
     if (!isSending) return false;
     const lastMessage = messages[messages.length - 1];
+    // If the last message is from the user, the AI is processing/generating
     return lastMessage && lastMessage.role === 'user';
   }, [isSending, messages]);
 
@@ -802,91 +821,129 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [uploadSingleImage]);
 
   // Core sending logic (Refined failure handling)
+  // --- Core Sending Logic (The Orchestrator) ---
   const handleSendMessage = useCallback(
     async (content: string) => {
       // 1. Pre-flight checks
-      if (isSending || (!content.trim() && attachedFiles.length === 0 && imageAttachments.length === 0)) return;
+      if (isSending || isLocalProcessing || (!content.trim() && attachedFiles.length === 0 && imageAttachments.length === 0)) return;
       if (isUploading) {
         toast.error("Please wait for current uploads to finish.");
         return;
       }
 
       let finalContent = content;
+      let triggerSource: 'auto' | 'manual' | 'none' = 'none';
+      let intentComplexity: 'high' | 'low' = 'low';
 
-      // 2. Web Search (if enabled)
-      if (searchEnabled && content.trim() && accessToken) {
-        setIsSearching(true);
-        setSearchResults(null);
-        try {
-          const searchService = getSearchService(accessToken);
-          const searchResponse = await searchService.search({
-            query: content,
-            session_id: sessionId,
-            conversation_id: sessionId,
-            max_results: 5,
-            model: 'sonar'
-          });
+      // 2. Agentive Search Routing (The "Porsche Engine" Logic)
+      if (content.trim() && accessToken && agentiveSearchEnabled) {
+        let shouldSearch = false;
 
-          setSearchResults({
-            summary: searchResponse.search_summary,
-            references: searchService.formatSearchResults(searchResponse.references),
-            metadata: {
-              query_id: searchResponse.metadata?.query_id || 'unknown',
-              query_detected: true,
-              search_triggered: true,
-              search_triggered_by: 'manual' as const,
-              model_used: searchResponse.metadata?.model_used,
-              sources_count: searchResponse.references.length,
-              total_cost_usd: searchResponse.metadata?.cost_usd || 0,
-              latency_ms: searchResponse.metadata?.latency_ms || 0,
-              cache_hit: searchResponse.metadata?.cache_hit || false,
-              data_freshness: searchResponse.data_freshness
-            }
-          });
+        if (searchMode === 'manual') {
+          shouldSearch = true;
+          triggerSource = 'manual';
+        } else if (searchMode === 'auto') {
+          // Run the intent detection (Cascade Pattern implementation assumed in detectSearchIntent)
+          setLocalProcessingStep('detecting_intent');
+          // Pass previous messages for context-aware detection
+          const intent: SearchIntent = await detectSearchIntent(content, messages);
 
-          // Inject search context into the AI prompt
-          if (searchResponse.search_summary) {
-            finalContent = `${content}\n\n<web_search_context>\nThe following information was retrieved from a recent web search:\n\n${searchResponse.search_summary}\n\nSources: ${searchResponse.references.map((r: any) => r.url).join(', ')}\n</web_search_context>\n\nPlease use this current information to answer the user's question.`;
+          // Clear intent detection step quickly
+          // Use functional update to ensure we only clear if it hasn't changed
+          setLocalProcessingStep(currentStep => currentStep === 'detecting_intent' ? null : currentStep);
+
+          if (intent.requiresSearch) {
+            shouldSearch = true;
+            triggerSource = 'auto';
+            intentComplexity = intent.complexity || 'low';
+            // Provide subtle UI feedback for auto-trigger
+            toast('Smart Search activated.', { icon: <Globe className='w-4 h-4 text-blue-500'/>, duration: 1500 });
           }
-        } catch (error) {
-          console.error('Search error:', error);
-          toast.error(error instanceof Error ? error.message : 'Search failed');
-        } finally {
-          setIsSearching(false);
-          setSearchEnabled(false); // Reset toggle after search
+        }
+
+        // Execute Search if triggered
+        if (shouldSearch) {
+          setLocalProcessingStep('searching_web');
+          setSearchResults(null);
+
+          try {
+            const searchService = getSearchService(accessToken);
+
+            // Dynamic Model Selection: Use Pro if manually requested OR if auto-detected intent is complex.
+            const searchModel = (triggerSource === 'manual' || intentComplexity === 'high') ? 'sonar-pro' : 'sonar';
+
+            const searchResponse = await searchService.search({
+              query: content,
+              session_id: sessionId,
+              conversation_id: sessionId,
+              max_results: 5,
+              model: searchModel,
+              trigger_source: triggerSource,
+            });
+
+            // Update UI with results (Optimistic UI)
+            setSearchResults({
+              summary: searchResponse.search_summary,
+              references: searchService.formatSearchResults(searchResponse.references),
+              metadata: {
+                query_id: searchResponse.metadata?.query_id || 'unknown',
+                search_triggered: true,
+                search_triggered_by: triggerSource,
+                model_used: searchResponse.metadata?.model_used || searchModel,
+                sources_count: searchResponse.references.length,
+                total_cost_usd: searchResponse.metadata?.cost_usd || 0,
+                latency_ms: searchResponse.metadata?.latency_ms || 0,
+                cache_hit: searchResponse.metadata?.cache_hit || false,
+                data_freshness: searchResponse.data_freshness
+              }
+            });
+
+            // Inject search context into the AI prompt
+            if (searchResponse.search_summary) {
+              // The prompt structure ensures the AI prioritizes the fresh data
+              const context = `\n\n<web_search_context>\n[Current Web Search Results - ${new Date().toLocaleDateString()}]\n\n${searchResponse.search_summary}\n\nSources: ${searchResponse.references.map((r: any) => r.url).join(', ')}\n</web_search_context>\n\n[INSTRUCTION: Use the above context to answer the user's request. Integrate the findings naturally and ensure citations are present.]`;
+              finalContent += context;
+            }
+          } catch (error) {
+            console.error('Search error:', error);
+            toast.error(error instanceof Error ? error.message : 'Web search failed. Sending without web context.');
+          }
         }
       }
 
-      // 2. Context Validation (Client-side token check)
-      if (context && context.is_active && context.context_content && contextEnabled) {
+      // 3. Global Context Injection
+      if (contextEnabled && context && context.is_active && context.context_content) {
         try {
-          const validation = await validateTokenLimit(context.context_content, content, selectedModel);
+          // Validate the *entire* content (including potential search context)
+          const validation = await validateTokenLimit(context.context_content, finalContent, selectedModel);
           if (!validation.isValid) {
-            toast.error(`Token limit exceeded (${validation.totalTokens}/${validation.maxTokens}).`);
-            return;
+            toast.error(`Token limit exceeded (${validation.totalTokens}/${validation.maxTokens}). Pinned context ignored.`);
+          } else {
+            // Inject the context using XML-like tags for clear delineation
+            finalContent = `<pinned_context>\n${context.context_content}\n</pinned_context>\n\n---\n\n` + finalContent;
           }
-          // Note: Depending on backend architecture, this injection might be redundant if the backend handles it fully.
-          finalContent = `${context.context_content}\n\n---\n\n${content}`;
         } catch (error) {
           console.error('Error validating token limit:', error);
-          toast.error('Could not validate token limits. Sending without context.');
+          toast.error('Could not validate token limits. Sending without global context.');
         }
       }
 
-      // 3. Image Uploads (Parallelized)
+      // 4. Image Uploads
       let uploadedImageIdsList: string[] = [];
       let uploadFailures = false;
       const imagesToUpload = imageAttachments.filter(att => !att.id && att.file);
 
       if (imagesToUpload.length > 0 && userId && sessionId) {
+        setLocalProcessingStep('uploading');
         const uploadPromises = imagesToUpload.map(attachment => uploadSingleImage(attachment));
         const results = await Promise.all(uploadPromises);
         uploadedImageIdsList = results.filter((id): id is string => id !== null);
-        // CRITICAL: Check for failures
-        if (uploadedImageIdsList.length < imagesToUpload.length) uploadFailures = true;
+
+        if (uploadedImageIdsList.length < imagesToUpload.length) {
+          uploadFailures = true;
+        }
       }
 
-      // Combine IDs
       const preUploadedImageIds = imageAttachments
         .filter(att => att.id && !imagesToUpload.some(itu => itu.tempId === att.tempId))
         .map(att => att.id!);
@@ -894,27 +951,51 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       uploadedImageIdsList = [...uploadedImageIdsList, ...preUploadedImageIds];
 
       if (uploadFailures) {
-        // Halt if uploads failed
         toast.error("Message not sent due to upload failures. Please check attachments and retry.");
+        setLocalProcessingStep(null);
         return;
       }
 
-      // 4. File ID Mapping
+      // 5. File ID Mapping
       const attachedFileNames = attachedFiles.map(f => f.file.name);
       const matchingStoredFiles = (files || []).filter(f => attachedFileNames.includes(f.name)).map(f => f.id);
 
-      // 5. Send Message
+      // 6. Send Message
       try {
+        setLocalProcessingStep(null); // Clear local processing before sending to AI
         await sendMessage(finalContent, matchingStoredFiles, uploadedImageIdsList);
         handleClearAttachments(); // Clear only on success
+
+        // Reset search mode to 'auto' after sending, if it was manually overridden
+        if (searchMode !== 'auto') {
+          setSearchMode('auto');
+        }
+
       } catch (sendError) {
         const errorMsg = sendError instanceof Error ? sendError.message : 'Failed to send message.';
-        // This error is often already handled by the hook, but we include it here for robustness.
         toast.error(`Error sending message: ${errorMsg}`);
+      } finally {
+        // Ensure local processing state is cleared even if errors occurred during send
+        setLocalProcessingStep(null);
       }
     },
-    [isSending, sendMessage, attachedFiles, imageAttachments, files, userId, sessionId, handleClearAttachments, isUploading, uploadSingleImage, context, contextEnabled, selectedModel, searchEnabled, accessToken]
+    // Dependency array carefully constructed
+    [
+      isSending, isLocalProcessing, attachedFiles, imageAttachments, isUploading, accessToken,
+      agentiveSearchEnabled, searchMode, messages, files, sendMessage, handleClearAttachments,
+      userId, sessionId, uploadSingleImage, context, contextEnabled, selectedModel
+    ]
   );
+
+  // *** NEW: Handler for the input area search toggle ***
+  const handleSearchToggle = useCallback(() => {
+    setSearchMode(prevMode => {
+      // Cycle through Auto -> Manual -> Off
+      if (prevMode === 'auto') return 'manual';
+      if (prevMode === 'manual') return 'off';
+      return 'auto';
+    });
+  }, []);
 
   const handleExport = useCallback(
     async (format: 'markdown' | 'json') => {
@@ -1017,6 +1098,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // MARK: RENDERING
   // ==========================================================================
 
+  // *** NEW: Helper to map processing states to UI details ***
+  const getProcessingDetails = () => {
+    // Prioritize local steps (Search, Upload) as they happen before the main AI processing
+    if (localProcessingStep) {
+      switch (localProcessingStep) {
+        case 'detecting_intent':
+          // Use a pulsing Zap icon for intent detection (fast operation)
+          return { step: "Analyzing intent...", modelName: null, icon: <Zap className="w-5 h-5 text-yellow-400 animate-pulse" />, progress: 0 };
+        case 'searching_web':
+          // Use a search icon for web search
+          return { step: "Searching the web...", modelName: "Perplexity", icon: <SearchIcon className="w-5 h-5 text-blue-400 animate-pulse" />, progress: 50 };
+        case 'uploading':
+          return { step: "Uploading files...", modelName: null, icon: <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />, progress: 50 };
+      }
+    }
+    // Fallback to the main AI processing steps
+    if (isProcessing) {
+      return { step: currentStep, progress: currentProgress, modelName: activeModelConfig?.name || null, icon: undefined };
+    }
+    return null;
+  };
+
+  const processingDetails = getProcessingDetails();
+
   return (
     <div className="flex h-full relative overflow-hidden antialiased bg-zinc-950 text-zinc-200">
 
@@ -1056,7 +1161,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                       title="Edit title"
                       aria-label="Edit session title"
-                      disabled={isSending || isUploading}
+                      disabled={isSending || isUploading || isLocalProcessing}
                     >
                       <Edit2 className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
                     </button>
@@ -1319,19 +1424,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <LoadingFallback />
             ) : (
               <>
-                {messages.length === 0 ? (
+                {/* Display Empty State only if no messages AND no search results yet */}
+                {messages.length === 0 && !searchResults ? (
                   renderEmptyState()
                 ) : (
                   <>
-                    <MessageList
-                      messages={messages}
-                      isStreaming={isSending}
-                      onImageClick={handleImageClick}
-                    />
-
-                    {/* Search Results Display */}
+                    {/* Search Results Display (Displayed immediately when available) */}
                     {searchResults && (
-                      <div className="px-4 md:px-6 lg:px-8 mb-4">
+                      <div className="px-4 md:px-6 lg:px-8 pt-4">
                         <SearchResults
                           results={searchResults.references}
                           metadata={searchResults.metadata}
@@ -1340,19 +1440,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       </div>
                     )}
 
+                    <MessageList
+                      messages={messages}
+                      isStreaming={isSending}
+                      onImageClick={handleImageClick}
+                    />
+
+                    {/* *** ENHANCED: Unified Processing Indicator *** */}
                     <AnimatePresence>
-                      {isProcessing && (
+                      {processingDetails && (
                         <ProcessingIndicator
-                          step={currentStep}
-                          progress={currentProgress}
-                          modelName={activeModelConfig?.name || null}
-                        />
-                      )}
-                      {isSearching && (
-                        <ProcessingIndicator
-                          step="Searching the web..."
-                          progress={50}
-                          modelName="Perplexity"
+                          {...processingDetails}
                         />
                       )}
                     </AnimatePresence>
@@ -1386,16 +1484,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onSend={handleSendMessage}
             onFileSelect={handleFileSelect}
             onImageSelect={handleImageSelect}
-            isStreaming={isSending || isSearching}
-            disabled={isSending || isLoadingHistory || isUploading || isSearching}
+            isStreaming={isSending || isLocalProcessing}
+            disabled={isSending || isLoadingHistory || isUploading || isLocalProcessing}
             hasAttachedFiles={attachedFiles.length > 0}
             hasAttachedImages={imageAttachments.length > 0}
             onStorageClick={handleStorageClick}
             storageButtonRef={storageButtonRef}
-            onScrollToBottom={undefined} // Consider implementing this if needed
+            onScrollToBottom={undefined}
             onError={message => toast.error(message)}
-            searchEnabled={searchEnabled}
-            onSearchToggle={() => setSearchEnabled(!searchEnabled)}
+            searchEnabled={searchMode !== 'off'}
+            onSearchToggle={handleSearchToggle}
           />
         </div>
 

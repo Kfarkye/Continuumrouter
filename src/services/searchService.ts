@@ -176,11 +176,14 @@ export class SearchService {
   }
 }
 
-export function detectSearchIntent(query: string): {
-  shouldSearch: boolean;
+export interface SearchIntent {
+  requiresSearch: boolean;
   confidence: 'high' | 'medium' | 'low';
+  complexity?: 'high' | 'low';
   reason: string;
-} {
+}
+
+export async function detectSearchIntent(query: string, previousMessages?: any[]): Promise<SearchIntent> {
   const normalizedQuery = query.toLowerCase().trim();
 
   const highConfidencePatterns = [
@@ -197,11 +200,16 @@ export function detectSearchIntent(query: string): {
     /\?(.*)(current|latest|today|now)/i,
   ];
 
+  // Determine complexity for high-confidence patterns
+  const complexityIndicators = /\b(research|analyze|compare|comprehensive|detailed|in-depth)\b/i;
+  const complexity: 'high' | 'low' = complexityIndicators.test(normalizedQuery) ? 'high' : 'low';
+
   for (const pattern of highConfidencePatterns) {
     if (pattern.test(normalizedQuery)) {
       return {
-        shouldSearch: true,
+        requiresSearch: true,
         confidence: 'high',
+        complexity,
         reason: 'Time-sensitive or factual query detected',
       };
     }
@@ -210,24 +218,27 @@ export function detectSearchIntent(query: string): {
   for (const pattern of mediumConfidencePatterns) {
     if (pattern.test(normalizedQuery)) {
       return {
-        shouldSearch: false,
+        requiresSearch: true,
         confidence: 'medium',
-        reason: 'Informational query detected - suggest search',
+        complexity,
+        reason: 'Informational query detected',
       };
     }
   }
 
   if (normalizedQuery.includes('?') && normalizedQuery.length < 100) {
     return {
-      shouldSearch: false,
+      requiresSearch: false,
       confidence: 'low',
+      complexity: 'low',
       reason: 'Simple question - may not need search',
     };
   }
 
   return {
-    shouldSearch: false,
+    requiresSearch: false,
     confidence: 'low',
+    complexity: 'low',
     reason: 'No search indicators detected',
   };
 }
