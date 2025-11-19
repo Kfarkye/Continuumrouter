@@ -843,6 +843,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               data_freshness: searchResponse.data_freshness
             }
           });
+
+          // Inject search context into the AI prompt
+          if (searchResponse.search_summary) {
+            finalContent = `${content}\n\n<web_search_context>\nThe following information was retrieved from a recent web search:\n\n${searchResponse.search_summary}\n\nSources: ${searchResponse.references.map((r: any) => r.url).join(', ')}\n</web_search_context>\n\nPlease use this current information to answer the user's question.`;
+          }
         } catch (error) {
           console.error('Search error:', error);
           toast.error(error instanceof Error ? error.message : 'Search failed');
