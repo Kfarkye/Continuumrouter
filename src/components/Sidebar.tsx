@@ -280,12 +280,26 @@ const ConversationListModal: React.FC<{
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'messages'>('recent');
 
   const filteredSessions = useMemo(() => {
-    return sessions.filter(session => 
+    const filtered = sessions.filter(session =>
       session.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [sessions, searchQuery]);
+
+    // Sort based on selected option
+    return filtered.sort((a, b) => {
+      if (sortBy === 'messages') {
+        const aCount = a.messages?.length || 0;
+        const bCount = b.messages?.length || 0;
+        return bCount - aCount; // Descending order (most messages first)
+      }
+      // Default: sort by most recent (updated_at or created_at)
+      const aDate = new Date(a.updated_at || a.createdAt).getTime();
+      const bDate = new Date(b.updated_at || b.createdAt).getTime();
+      return bDate - aDate;
+    });
+  }, [sessions, searchQuery, sortBy]);
 
   const handleEdit = (session: ChatSession) => {
     setEditingId(session.id);
@@ -314,7 +328,7 @@ const ConversationListModal: React.FC<{
     <Modal isOpen={isOpen} onClose={onClose} title="Conversations" size="large">
       <div className="p-6">
         {/* Search */}
-        <div className="relative mb-6">
+        <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa]" size={18} />
           <input
             type="text"
@@ -323,6 +337,30 @@ const ConversationListModal: React.FC<{
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-[#09090b] border border-white/10 rounded-lg text-white placeholder-[#a1a1aa] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
           />
+        </div>
+
+        {/* Sort Options */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setSortBy('recent')}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              sortBy === 'recent'
+                ? 'bg-[#3b82f6] text-white'
+                : 'bg-[#27272a] text-[#a1a1aa] hover:bg-[#3f3f46]'
+            }`}
+          >
+            Most Recent
+          </button>
+          <button
+            onClick={() => setSortBy('messages')}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              sortBy === 'messages'
+                ? 'bg-[#3b82f6] text-white'
+                : 'bg-[#27272a] text-[#a1a1aa] hover:bg-[#3f3f46]'
+            }`}
+          >
+            Most Messages
+          </button>
         </div>
 
         {/* Session List */}
