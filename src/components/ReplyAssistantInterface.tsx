@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useReplyAssistant } from '../hooks/useReplyAssistant';
-import { MessageSquare, Send, Sparkles, Copy, Check, User, Info } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { ClinicianReplyContext } from '../types';
 
@@ -29,8 +29,6 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
     message_id: string;
   } | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [showContext, setShowContext] = useState(false);
-  const [context, setContext] = useState<ClinicianReplyContext | null>(null);
 
   const selectedClinician = clinicians.find(c => c.id === selectedClinicianId);
 
@@ -63,7 +61,7 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
     if (!generatedReplies) return;
 
     await selectReply(generatedReplies.message_id, reply);
-    toast.success(`Reply ${index + 1} selected and saved`);
+    toast.success('Reply selected');
 
     setIncomingText('');
     setUserGoal('');
@@ -73,145 +71,136 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
   const handleCopyReply = async (reply: string, index: number) => {
     await navigator.clipboard.writeText(reply);
     setCopiedIndex(index);
-    toast.success('Copied to clipboard');
+    toast.success('Copied');
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-white/60">Loading...</div>
+      <div className="flex items-center justify-center h-full bg-white">
+        <div className="w-1 h-1 bg-black rounded-full animate-pulse" />
       </div>
     );
   }
 
   if (clinicians.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <MessageSquare className="w-16 h-16 text-white/20 mb-4" />
-        <h2 className="text-xl font-semibold text-white mb-2">No Clinicians Found</h2>
-        <p className="text-white/60 max-w-md">
-          Import clinicians from the sidebar to start using the Reply Assistant.
+      <div className="flex flex-col items-center justify-center h-full bg-white">
+        <p className="text-black/40 text-sm font-light tracking-wide">
+          No clinicians available
         </p>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-black">
+    <div className="h-full flex flex-col bg-white">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto p-6 space-y-6">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-2xl font-bold text-white mb-2">Reply Assistant</h1>
-              <p className="text-white/60">Generate AI-powered replies to clinician messages</p>
-            </div>
-            <Sparkles className="w-8 h-8 text-blue-400" />
+        <div className="max-w-3xl mx-auto px-8 py-16 space-y-12">
+          {/* Header */}
+          <div className="space-y-2">
+            <h1 className="text-4xl font-light tracking-tight text-black">
+              Reply Assistant
+            </h1>
+            <p className="text-black/40 font-light tracking-wide text-sm">
+              Intelligent responses, crafted for you
+            </p>
           </div>
 
-          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">
-                Select Clinician
+          {/* Input Section */}
+          <div className="space-y-8">
+            {/* Clinician Selection */}
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-black/60 uppercase tracking-wider">
+                Clinician
               </label>
               <select
                 value={selectedClinicianId}
                 onChange={(e) => setSelectedClinicianId(e.target.value)}
-                className="w-full px-4 py-3 bg-white/[0.05] border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-0 py-4 bg-transparent border-0 border-b border-black/10 text-black text-base font-light focus:outline-none focus:border-black/40 transition-colors appearance-none cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23000000' stroke-opacity='0.3' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0 center',
+                }}
               >
                 {clinicians.map(clinician => (
-                  <option key={clinician.id} value={clinician.id} className="bg-zinc-900">
-                    {clinician.full_name} ({clinician.email})
+                  <option key={clinician.id} value={clinician.id}>
+                    {clinician.full_name}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">
-                Incoming Message from Clinician
+            {/* Incoming Message */}
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-black/60 uppercase tracking-wider">
+                Incoming Message
               </label>
               <textarea
                 value={incomingText}
                 onChange={(e) => setIncomingText(e.target.value)}
-                placeholder="Paste the message you received from the clinician..."
-                className="w-full px-4 py-3 bg-white/[0.05] border border-white/10 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]"
+                placeholder="Enter the message..."
+                rows={6}
+                className="w-full px-0 py-4 bg-transparent border-0 border-b border-black/10 text-black text-base font-light placeholder-black/20 focus:outline-none focus:border-black/40 transition-colors resize-none"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">
-                Your Goal (Optional)
+            {/* User Goal */}
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-black/60 uppercase tracking-wider">
+                Goal <span className="text-black/30">(Optional)</span>
               </label>
               <input
                 type="text"
                 value={userGoal}
                 onChange={(e) => setUserGoal(e.target.value)}
-                placeholder="e.g., Schedule a check-in call, Extend assignment, etc."
-                className="w-full px-4 py-3 bg-white/[0.05] border border-white/10 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="What would you like to achieve?"
+                className="w-full px-0 py-4 bg-transparent border-0 border-b border-black/10 text-black text-base font-light placeholder-black/20 focus:outline-none focus:border-black/40 transition-colors"
               />
             </div>
 
-            <button
-              onClick={handleGenerateReply}
-              disabled={isGenerating || !incomingText.trim()}
-              className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-blue-500/50 disabled:to-blue-600/50 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
-            >
-              {isGenerating ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                  Generating Replies...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Generate Reply Options
-                </>
-              )}
-            </button>
+            {/* Generate Button */}
+            <div className="pt-4">
+              <button
+                onClick={handleGenerateReply}
+                disabled={isGenerating || !incomingText.trim()}
+                className="w-full px-8 py-5 bg-black hover:bg-black/90 disabled:bg-black/30 text-white text-sm font-medium tracking-wide rounded-2xl transition-all duration-200 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? 'Generating...' : 'Generate Replies'}
+              </button>
+            </div>
           </div>
 
+          {/* Generated Replies */}
           {generatedReplies && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-white">Generated Replies</h3>
-
+            <div className="space-y-8 pt-8 border-t border-black/5">
               {[generatedReplies.reply_1, generatedReplies.reply_2].map((reply, index) => (
                 <div
                   key={index}
-                  className="bg-white/[0.02] border border-white/10 rounded-xl p-6 space-y-4"
+                  className="space-y-6 pb-8 border-b border-black/5 last:border-0"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-blue-400 mb-2">
-                        Option {index + 1}
-                      </div>
-                      <p className="text-white/90 whitespace-pre-wrap">{reply}</p>
+                  <div className="space-y-4">
+                    <div className="text-xs font-medium text-black/40 uppercase tracking-wider">
+                      Option {index + 1}
                     </div>
+                    <p className="text-base font-light text-black/90 leading-relaxed whitespace-pre-wrap">
+                      {reply}
+                    </p>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={() => handleCopyReply(reply, index)}
-                      className="flex-1 px-4 py-2 bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 text-white rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                      className="flex-1 px-6 py-4 bg-black/5 hover:bg-black/10 text-black text-sm font-medium tracking-wide rounded-xl transition-all duration-200"
                     >
-                      {copiedIndex === index ? (
-                        <>
-                          <Check className="w-4 h-4" />
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4" />
-                          Copy
-                        </>
-                      )}
+                      {copiedIndex === index ? 'Copied' : 'Copy'}
                     </button>
                     <button
                       onClick={() => handleSelectReply(reply, index)}
-                      className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                      className="flex-1 px-6 py-4 bg-black hover:bg-black/90 text-white text-sm font-medium tracking-wide rounded-xl transition-all duration-200"
                     >
-                      <Check className="w-4 h-4" />
-                      Use This Reply
+                      Use Reply
                     </button>
                   </div>
                 </div>
@@ -219,13 +208,13 @@ export function ReplyAssistantInterface({ userId }: ReplyAssistantInterfaceProps
             </div>
           )}
 
-          {selectedClinician && (
-            <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-white/60 text-sm">
-                <User className="w-4 h-4" />
-                <span>Selected: {selectedClinician.full_name}</span>
-                {selectedClinician.phone && (
-                  <span className="ml-auto">{selectedClinician.phone}</span>
+          {/* Selected Clinician Info */}
+          {selectedClinician && !generatedReplies && (
+            <div className="pt-8 border-t border-black/5">
+              <div className="flex items-baseline justify-between text-xs text-black/30 font-light tracking-wide">
+                <span>{selectedClinician.full_name}</span>
+                {selectedClinician.email && (
+                  <span>{selectedClinician.email}</span>
                 )}
               </div>
             </div>
