@@ -1,16 +1,15 @@
 import { useEffect, useCallback, useRef, useReducer } from 'react';
-import { ChatMessage, StoredFile, AiModelKey } from '../types'; // Adjust paths as needed
-import { generateTempId } from '../lib/utils'; // Adjust paths as needed
-import { MODEL_CONFIGS } from '../config/models'; // Import configs for reliable hints
+import { ChatMessage, StoredFile, AiModelKey } from '../types';
+import { generateTempId } from '../lib/utils';
+import { MODEL_CONFIGS } from '../config/models';
+import { supabase } from '../lib/supabaseClient';
 
 // ============================================================================
 // Configuration & Environment
 // ============================================================================
 
-// Use environment variables for the endpoint, crucial for Vercel deployments
-// !! IMPORTANT: Set NEXT_PUBLIC_AI_CHAT_ROUTER_ENDPOINT in your .env file.
-// We use the specific URL from the logs as a fallback if the env var is missing.
-const API_ENDPOINT = process.env.NEXT_PUBLIC_AI_CHAT_ROUTER_ENDPOINT || 'https://luohiaujigqcjpzicxiz.supabase.co/functions/v1/ai-chat-router';
+// Use Vite environment variables for the endpoint
+const API_ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat-router`;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 500; // ms
 
@@ -69,7 +68,7 @@ interface SSEMessage {
 
 const debugLog = (message: string, data: any = {}) => {
     // Ensure debugging logs only appear in development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(`[🚀 CHAT DEBUG] ${message}`, data);
     }
 };
@@ -212,29 +211,68 @@ export const useAiRouterChat = ({
     dispatch({ type: 'APPEND_MESSAGE', payload: message });
   }, []);
 
-  // 1. Load History (Placeholder - Adapt to your actual API)
+  // 1. Load History from Supabase
   useEffect(() => {
     if (!sessionId || !accessToken) {
-      // If no session/auth, clear history and stop loading
       dispatch({ type: 'HISTORY_LOADED', payload: [] });
       return;
     }
 
-    // In a production application, fetch history from your backend or Supabase DB
+    let cancelled = false;
+
     const fetchHistory = async () => {
       dispatch({ type: 'HISTORY_LOADING' });
       try {
-        // Example: const { data, error } = await supabase.from('ai_messages')...
-        // For this implementation, we assume the history might be loaded elsewhere or we start fresh.
-        await new Promise(resolve => setTimeout(resolve, 100)); // Simulate minimal load time
-        dispatch({ type: 'HISTORY_LOADED', payload: [] });
-        debugLog("✅ History Loaded (Simulated/Empty)");
+        if (!supabase) throw new Error('Supabase client not initialized');
+
+        // Get conversation ID from session
+        const { data: conversation, error: convError } = await supabase
+          .from('ai_conversations')
+          .select('id')
+          .eq('session_id', sessionId)
+          .maybeSingle();
+
+        if (convError) throw convError;
+        if (!conversation) {
+          if (!cancelled) dispatch({ type: 'HISTORY_LOADED', payload: [] });
+          return;
+        }
+
+        // Load the most recent messages (last 50)
+        const { data: history, error: historyError } = await supabase
+          .from('ai_messages')
+          .select('id, role, content, created_at, metadata')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (historyError) throw historyError;
+
+        if (!cancelled) {
+          // Reverse to show oldest first
+          const reversedHistory = (history || []).reverse();
+          const messages: ChatMessage[] = reversedHistory.map((msg) => ({
+            id: String(msg.id),
+            role: msg.role as ChatMessage['role'],
+            content: msg.content,
+            createdAt: msg.created_at,
+            timestamp: new Date(msg.created_at).getTime(),
+            metadata: (msg.metadata as Record<string, unknown>) || {},
+          }));
+
+          dispatch({ type: 'HISTORY_LOADED', payload: messages });
+          debugLog("✅ History Loaded", { count: messages.length });
+        }
       } catch (err) {
-        dispatch({ type: 'ERROR', payload: { error: err instanceof Error ? err : new Error('History load error') } });
+        if (!cancelled) {
+          console.error("Failed to load history:", err);
+          dispatch({ type: 'ERROR', payload: { error: err instanceof Error ? err : new Error('History load error') } });
+        }
       }
     };
 
     fetchHistory();
+    return () => { cancelled = true; };
   }, [sessionId, accessToken]);
 
 
@@ -252,6 +290,7 @@ export const useAiRouterChat = ({
       role: 'user',
       content,
       createdAt: new Date().toISOString(),
+      timestamp: Date.now(),
       metadata: { attached_file_ids: fileIds, attached_image_ids: imageIds },
     };
 
@@ -261,6 +300,7 @@ export const useAiRouterChat = ({
       role: 'assistant',
       content: '',
       createdAt: new Date().toISOString(),
+      timestamp: Date.now(),
       metadata: { isStreaming: true },
     };
 
@@ -413,7 +453,7 @@ export const useAiRouterChat = ({
     sendMessage,
     clearMessages,
     stop,
-    // Expose appendMessage for external use (e.g., action results)
+    cancelStream: stop, // Alias for backward compatibility
     appendMessage,
   };
 };

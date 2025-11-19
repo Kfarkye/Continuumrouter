@@ -185,13 +185,15 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'model' | 'system';
   content: string;
-  timestamp: string;
+  timestamp: string | number;
+  createdAt?: string;
   status?: 'sending' | 'streaming' | 'complete' | 'error';
   progress?: number;
   rating?: 'good' | 'bad' | null;
   rated_at?: string;
   metadata?: {
     provider?: string;
+    model?: string;
     taskInfo?: string;
     tokensUsed?: string;
     estimatedTime?: string;
@@ -203,6 +205,9 @@ export interface ChatMessage {
     citations?: Citation[];
     artifact_id?: string;
     search_metadata?: SearchMetadata;
+    isStreaming?: boolean;
+    isError?: boolean;
+    router_info?: any;
   };
   search_results?: SearchResult[];
   files?: Array<{ name: string; size: number; type?: string; url?: string; id?: string; }>;
