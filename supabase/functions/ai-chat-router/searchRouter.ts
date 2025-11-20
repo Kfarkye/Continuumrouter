@@ -82,13 +82,40 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
       });
     }
 
-    return new Response(JSON.stringify({
-      content: search_summary,
-      sources: references,
-      metadata,
-      isSearchResult: true
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    // Return as SSE stream to match the expected frontend format
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send model switch event
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: 'model_switch',
+          provider: 'perplexity',
+          model: metadata?.model_used || 'sonar',
+          metadata: { isSearchResult: true }
+        })}\n\n`));
+
+        // Send the search summary as text chunks
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: 'text',
+          content: search_summary
+        })}\n\n`));
+
+        // Send done event
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: 'done'
+        })}\n\n`));
+
+        controller.close();
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
     });
 
   } catch (error: any) {
@@ -97,16 +124,26 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
     console.error('[ROUTER-DEBUG] Error message:', error.message);
     console.error('[ROUTER-DEBUG] Error stack:', error.stack);
 
-    return new Response(JSON.stringify({
-      error: 'Search unavailable',
-      content: "Search temporarily unavailable.",
-      details: error.message,
-      debug_info: {
-        error_type: error.constructor.name,
-        query_received: query,
-        conversation_id: conversationId,
-        user_id: userId
+    // Return error as SSE stream
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: 'error',
+          content: `Search temporarily unavailable: ${error.message}`
+        })}\n\n`));
+        controller.close();
       }
-    }), {status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json'}});
+    });
+
+    return new Response(stream, {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    });
   }
 }
