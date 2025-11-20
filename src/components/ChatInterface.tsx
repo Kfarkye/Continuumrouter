@@ -6,7 +6,6 @@ import {
   MoreVertical, Download, Settings, Search as SearchIcon, Globe
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-
 // MARK: Internal Hooks
 // Note: Ensure these paths are correct for your project structure
 import { useAiRouterChat } from '../hooks/useAiRouterChat';
@@ -14,7 +13,6 @@ import { useCodeSnippets } from '../hooks/useCodeSnippets';
 import { useContextManager } from '../hooks/useContextManager';
 import { useFeatureFlag } from '../hooks/useFeatureFlag';
 import { useOnboardingState } from '../hooks/useOnboardingState';
-
 // MARK: Components
 import { MessageList } from './MessageList';
 import { FileUploadPreview } from './FileUploadPreview';
@@ -22,7 +20,6 @@ import { ChatInputArea } from './ChatInputArea';
 import { ContextBanner } from './ContextBanner';
 import { SpaceSelector } from './SpaceSelector';
 import { SearchResults } from './SearchResults';
-
 // MARK: Utilities and Services
 import { uploadImage } from '../lib/imageStorageService';
 import { MODEL_CONFIGS, AiModelKey } from '../config/models';
@@ -36,25 +33,19 @@ import {
 } from '../utils/exportUtils';
 import { trackExport } from '../lib/analytics';
 import { getSearchService, detectSearchIntent, SearchIntent } from '../services/searchService';
-
 // MARK: Types
 import { StoredFile, SavedSchema, ImageAttachment, CodeSnippet, LocalFileAttachment, ChatMessage } from '../types';
-
 // ============================================================================
 // LAZY LOADED COMPONENTS (Performance Optimization)
 // ============================================================================
-
 const StorageManager = lazy(() => import('./StorageManager').then(module => ({ default: module.StorageManager })));
 const CodeSnippetSidebar = lazy(() => import('./CodeSnippetSidebar').then(module => ({ default: module.CodeSnippetSidebar })));
 const ContextEditorModal = lazy(() => import('./ContextEditorModal').then(module => ({ default: module.ContextEditorModal })));
 const SpaceSettingsModal = lazy(() => import('./SpaceSettingsModal').then(module => ({ default: module.SpaceSettingsModal })));
 const SpacesIntroModal = lazy(() => import('./SpacesIntroModal').then(module => ({ default: module.SpacesIntroModal })));
-
-
 // ============================================================================
 // MARK: CONFIGURATION & TYPES
 // ============================================================================
-
 interface SaveSchemaArgs {
   name: string;
   content: string | Record<string, unknown> | unknown[];
@@ -62,19 +53,16 @@ interface SaveSchemaArgs {
   description?: string;
   source_file?: string;
 }
-
 // Type guard for robust validation of AI-generated arguments
 function isSaveSchemaArgs(args: unknown): args is SaveSchemaArgs {
   if (typeof args !== 'object' || args === null) return false;
   const record = args as Record<string, unknown>;
   return typeof record.name === 'string' && record.name.length > 0 && record.content !== undefined;
 }
-
 // Configuration for validation and UX constraints
 const MAX_IMAGE_SIZE_MB = 10;
 const MAX_FILE_SIZE_MB = 50;
 const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
 // Simplified prompts for the minimalist "chip" style empty state
 const SUGGESTED_PROMPTS = [
   { title: "Organize Thoughts", prompt: "Take these rough notes/context and organize them into a structured hierarchy or outline (like PARA method)." },
@@ -82,18 +70,14 @@ const SUGGESTED_PROMPTS = [
   { title: "Extract Action Items", prompt: "Review the content and extract a clear list of actionable tasks, deadlines, and next steps." },
   { title: "Brainstorm Ideas", prompt: "Act as a thinking partner. Expand on the current topic, suggest alternative perspectives, and generate new ideas." }
 ];
-
 // *** NEW: Types for Agentive Search State ***
 // 'auto' = Use intent detection. 'manual' = Force ON for next message. 'off' = Force OFF for next message.
 type SearchMode = 'auto' | 'manual' | 'off';
 // Tracks localized processing steps (distinct from backend steps)
 type LocalProcessingStep = 'detecting_intent' | 'searching_web' | 'uploading' | null;
-
-
 // ============================================================================
 // MARK: UTILITY HOOKS
 // ============================================================================
-
 const useClickOutside = (ref: React.RefObject<HTMLElement> | React.RefObject<HTMLElement>[], handler: () => void) => {
   useEffect(() => {
     const listener = (event: MouseEvent | TouchEvent) => {
@@ -112,18 +96,14 @@ const useClickOutside = (ref: React.RefObject<HTMLElement> | React.RefObject<HTM
     };
   }, [ref, handler]);
 };
-
-
 // ============================================================================
 // MARK: UTILITY COMPONENTS (Memoized for performance)
 // ============================================================================
-
 const LoadingFallback = React.memo(() => (
   <div className="flex items-center justify-center h-full w-full" role="status" aria-label="Loading">
     <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
   </div>
 ));
-
 const ScrollToBottomButton: React.FC<{ onClick: () => void }> = React.memo(({ onClick }) => (
   <motion.button
     initial={{ opacity: 0, y: 20 }}
@@ -139,7 +119,6 @@ const ScrollToBottomButton: React.FC<{ onClick: () => void }> = React.memo(({ on
     <ArrowDown className="w-5 h-5 text-zinc-200" />
   </motion.button>
 ));
-
 // *** ENHANCEMENT: Granular Processing Indicator ***
 const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName: string | null; icon?: React.ReactNode }> = React.memo(({ step, progress, modelName, icon }) => (
   <motion.div
@@ -172,10 +151,8 @@ const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName:
     </div>
   </motion.div>
 ));
-
 const ImageLightbox: React.FC<{ imageUrl: string; onClose: () => void }> = React.memo(({ imageUrl, onClose }) => {
   const lightboxRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -183,11 +160,9 @@ const ImageLightbox: React.FC<{ imageUrl: string; onClose: () => void }> = React
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
-
   useEffect(() => {
     lightboxRef.current?.focus();
   }, []);
-
   return (
     <motion.div
       ref={lightboxRef}
@@ -220,12 +195,9 @@ const ImageLightbox: React.FC<{ imageUrl: string; onClose: () => void }> = React
     </motion.div>
   );
 });
-
-
 // ============================================================================
 // MARK: COMPONENT DEFINITION
 // ============================================================================
-
 interface ChatInterfaceProps {
   sessionId: string | null;
   sessionName: string;
@@ -240,7 +212,6 @@ interface ChatInterfaceProps {
   onUpdateSessionName?: (sessionId: string, newName: string) => void;
   userName?: string;
 }
-
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   sessionId,
   sessionName,
@@ -255,19 +226,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onUpdateSessionName,
   userName,
 }) => {
-
   // ==========================================================================
   // MARK: STATE & REFS
   // ==========================================================================
-
   const [selectedModel, setSelectedModel] = useState<AiModelKey>('auto');
   const [activeModel, setActiveModel] = useState<AiModelKey | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<LocalFileAttachment[]>([]);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
-
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [focusedModelIndex, setFocusedModelIndex] = useState(-1);
-
   const [showStorage, setShowStorage] = useState(false);
   const [showCodeSnippets, setShowCodeSnippets] = useState(false);
   const [activeLightboxImage, setActiveLightboxImage] = useState<string | null>(null);
@@ -276,20 +243,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [isNearBottom, setIsNearBottom] = useState(true);
-
   const [showContextEditor, setShowContextEditor] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
   const [showSpaceSettings, setShowSpaceSettings] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
   const [showSpacesIntro, setShowSpacesIntro] = useState(false);
-
   // *** REFACTORED: Search and Processing State ***
   // Default to Agentive mode ('auto')
   const [searchMode, setSearchMode] = useState<SearchMode>('auto');
   const [searchResults, setSearchResults] = useState<any>(null);
   // Unified local processing state
   const [localProcessingStep, setLocalProcessingStep] = useState<LocalProcessingStep>(null);
-
   const titleInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesWrapperRef = useRef<HTMLDivElement>(null);
@@ -298,30 +262,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const desktopMenuRef = useRef<HTMLDivElement>(null);
   const storageButtonRef = useRef<HTMLButtonElement>(null);
-
   const isSavingTitle = useRef(false);
   const latestProviderRef = useRef('unknown');
   // Optimization: Use ref to track current attachments for cleanup effects
   const imageAttachmentsRef = useRef(imageAttachments);
-
   // ==========================================================================
   // MARK: HOOKS
   // ==========================================================================
-
   const contextEnabled = useFeatureFlag('pinned_context');
   const exportEnabled = useFeatureFlag('export_conversation');
   // *** NEW: Feature flag for the Agentive system itself ***
   const agentiveSearchEnabled = useFeatureFlag('agentive_web_search');
-
   const {
     context,
     syncing: contextSyncing,
     saveContext,
     toggleActive,
   } = useContextManager(userId || undefined);
-
   const { hasSeenSpacesIntro, isLoading: isLoadingOnboarding, markSpacesIntroAsSeen } = useOnboardingState(userId || undefined);
-
   useClickOutside([dropdownRef, mobileMenuRef, desktopMenuRef], () => {
     if (showModelDropdown) {
       setShowModelDropdown(false);
@@ -330,11 +288,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setShowMobileMenu(false);
     setShowDesktopMenu(false);
   });
-
   // ==========================================================================
   // MARK: CORE CHAT & SNIPPET LOGIC
   // ==========================================================================
-
   const handleActionRequest = useCallback(
     async (action: string, args: unknown, messageId: string, appendMessage: Function) => {
       if (action === 'save_schema' && sessionId) {
@@ -350,13 +306,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           });
           return;
         }
-
         const { name, content, format, description, source_file } = args;
-
         try {
           let contentString: string;
           let parsedContent: any;
-
           if (typeof content === 'string') {
             contentString = content;
             try {
@@ -371,14 +324,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           } else {
             throw new Error(`Invalid content type (${typeof content})`);
           }
-
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           const safeFileName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
           const extension = getFileExtension(format || 'json');
           const fileName = `${safeFileName}_${timestamp}.${extension}`;
-
           triggerDownload(contentString, fileName);
-
           const schemaWithMetadata = {
             content: parsedContent,
             _metadata: {
@@ -390,10 +340,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               extracted_by_model: latestProviderRef.current
             }
           };
-
           await onSaveSchema(name, schemaWithMetadata, sessionId);
           toast.success(`Schema "${name}" saved & downloaded.`);
-
         } catch (e) {
           console.error('Error during save_schema action:', e);
           const errorMsg = e instanceof Error ? e.message : 'An unexpected error occurred';
@@ -410,7 +358,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     },
     [sessionId, onSaveSchema]
   );
-
   const {
     messages,
     sendMessage,
@@ -431,7 +378,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     selectedModel,
     spaceId: selectedSpaceId,
   }) as any;
-
   const {
     snippets,
     isLoading: isLoadingSnippets,
@@ -442,18 +388,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     userId,
     messages,
   });
-
   // ==========================================================================
   // MARK: MEMOIZED VALUES & EFFECTS
   // ==========================================================================
-
   const currentModelConfig = useMemo(() => MODEL_CONFIGS[selectedModel], [selectedModel]);
   const activeModelConfig = useMemo(() => activeModel ? MODEL_CONFIGS[activeModel] : null, [activeModel]);
   const modelKeys = useMemo(() => Object.keys(MODEL_CONFIGS) as AiModelKey[], []);
-
   const isUploading = useMemo(() => imageAttachments.some(img => img.isUploading), [imageAttachments]);
   const isLocalProcessing = useMemo(() => localProcessingStep !== null, [localProcessingStep]);
-
   // Determine if the AI backend is actively generating a response
   const isProcessing = useMemo(() => {
     if (!isSending) return false;
@@ -461,12 +403,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     // If the last message is from the user, the AI is processing/generating
     return lastMessage && lastMessage.role === 'user';
   }, [isSending, messages]);
-
   // Keep the ref updated with the latest state
   useEffect(() => {
     imageAttachmentsRef.current = imageAttachments;
   }, [imageAttachments]);
-
   // Performance: Cleanup Blob URLs on component unmount to prevent memory leaks
   useEffect(() => {
     return () => {
@@ -478,7 +418,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       });
     };
   }, []);
-
   useEffect(() => {
     const lastAiMessage = messages.slice().reverse().find(m => m.role === 'assistant') as ChatMessage | undefined;
     if (lastAiMessage?.metadata?.provider) {
@@ -492,14 +431,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       latestProviderRef.current = 'unknown';
     }
   }, [messages, modelKeys]);
-
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
       titleInputRef.current.focus();
       titleInputRef.current.select();
     }
   }, [isEditingTitle]);
-
   useEffect(() => {
     if (showModelDropdown) {
       const currentIndex = modelKeys.indexOf(selectedModel);
@@ -508,7 +445,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setFocusedModelIndex(-1);
     }
   }, [showModelDropdown, selectedModel, modelKeys]);
-
   useEffect(() => {
     if (!isLoadingOnboarding && !hasSeenSpacesIntro && userId) {
       // Preload the modal component
@@ -517,7 +453,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return () => clearTimeout(timer);
     }
   }, [isLoadingOnboarding, hasSeenSpacesIntro, userId]);
-
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && showStorage) {
@@ -530,7 +465,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
   }, [showStorage]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     if (onProgressUpdate && isSending) {
       const modelName = activeModelConfig?.providerKey || latestProviderRef.current || 'system';
@@ -538,18 +472,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       onProgressUpdate(currentProgress, currentStep, mappedModel);
     }
   }, [currentProgress, currentStep, isSending, onProgressUpdate, activeModelConfig]);
-
   // ==========================================================================
   // MARK: SCROLL MANAGEMENT
   // ==========================================================================
-
   const checkScrollPosition = useCallback(() => {
     const wrapper = messagesWrapperRef.current;
     if (!wrapper) return;
     const nearBottom = wrapper.scrollHeight - wrapper.scrollTop <= wrapper.clientHeight + 150;
     if (nearBottom !== isNearBottom) setIsNearBottom(nearBottom);
   }, [isNearBottom]);
-
   useEffect(() => {
     const wrapper = messagesWrapperRef.current;
     if (wrapper) {
@@ -558,7 +489,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return () => wrapper.removeEventListener('scroll', checkScrollPosition);
     }
   }, [checkScrollPosition, isLoadingHistory]);
-
   useLayoutEffect(() => {
     if (isLoadingHistory) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -569,20 +499,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
   }, [messages, isLoadingHistory, isNearBottom]);
-
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
-
   // ==========================================================================
   // MARK: HANDLERS
   // ==========================================================================
-
   const handleTitleEdit = useCallback(() => {
     setEditedTitle(sessionName);
     setIsEditingTitle(true);
   }, [sessionName]);
-
   const handleTitleSave = useCallback(async () => {
     if (isSavingTitle.current) return;
     const trimmedTitle = editedTitle.trim();
@@ -604,12 +530,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
     }
   }, [editedTitle, sessionName, sessionId, onUpdateSessionName]);
-
   const handleTitleCancel = useCallback(() => {
     setIsEditingTitle(false);
     setEditedTitle('');
   }, []);
-
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -619,23 +543,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       handleTitleCancel();
     }
   }, [handleTitleSave, handleTitleCancel]);
-
   const handleImageClick = useCallback((imageUrl: string) => {
     setActiveLightboxImage(imageUrl);
   }, []);
-
   const handleModelSelect = useCallback((key: AiModelKey) => {
     setSelectedModel(key);
     setShowModelDropdown(false);
     setFocusedModelIndex(-1);
     modelButtonRef.current?.focus();
   }, []);
-
   const handleDropdownKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!showModelDropdown) return;
     const maxIndex = modelKeys.length - 1;
     let newIndex = focusedModelIndex;
-
     switch (event.key) {
       case 'ArrowDown': event.preventDefault(); newIndex = focusedModelIndex < maxIndex ? focusedModelIndex + 1 : 0; break;
       case 'ArrowUp': event.preventDefault(); newIndex = focusedModelIndex > 0 ? focusedModelIndex - 1 : maxIndex; break;
@@ -647,11 +567,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
     if (newIndex !== focusedModelIndex) setFocusedModelIndex(newIndex);
   }, [showModelDropdown, focusedModelIndex, modelKeys]);
-
   const handleSchemaSelect = useCallback((schema: SavedSchema) => {
     toast.info(`Schema "${schema.name}" selected (TODO: Implement usage)`);
   }, []);
-
   const handleStorageClick = useCallback(() => {
     if (!showStorage) import('./StorageManager'); // Preload
     setShowStorage(prev => {
@@ -663,12 +581,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return newState;
     });
   }, [showStorage]);
-
   const handleToggleCodeSnippets = useCallback(() => {
     if (!showCodeSnippets) import('./CodeSnippetSidebar'); // Preload
     setShowCodeSnippets(prev => !prev);
   }, [showCodeSnippets]);
-
   const handleCopySnippet = useCallback(async (snippet: CodeSnippet) => {
     try {
       await navigator.clipboard.writeText(snippet.content);
@@ -677,7 +593,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       toast.error('Failed to copy code');
     }
   }, []);
-
   const handleDownloadSnippet = useCallback((snippet: CodeSnippet) => {
     const extension = getFileExtension(snippet.language);
     const fileName = snippet.userDefinedName || snippet.detectedFileName || `snippet_${snippet.orderIndex + 1}`;
@@ -685,7 +600,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     triggerDownload(snippet.content, fullFileName);
     toast.success(`Downloaded ${fullFileName}`);
   }, []);
-
   const handleNavigateToMessage = useCallback((messageId: string) => {
     const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
     if (messageElement) {
@@ -697,7 +611,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       toast.error('Message not found in current view');
     }
   }, []);
-
   const handleDeleteSession = useCallback(() => {
     if (sessionId && onDeleteSession) {
       if (window.confirm("Are you sure you want to delete this entire session? This cannot be undone.")) {
@@ -707,11 +620,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setShowDesktopMenu(false);
     setShowMobileMenu(false);
   }, [sessionId, onDeleteSession]);
-
   // ==========================================================================
   // MARK: FILE & SENDING LOGIC
   // ==========================================================================
-
   const handleFileSelect = useCallback((newFiles: File[]) => {
     const validFiles: File[] = [];
     const errors: string[] = [];
@@ -725,7 +636,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setAttachedFiles((prev) => [...prev, ...newAttachments]);
     }
   }, []);
-
   const handleImageSelect = useCallback((newImages: File[]) => {
     const validImages: File[] = [];
     const errors: string[] = [];
@@ -746,11 +656,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setImageAttachments((prev) => [...prev, ...newAttachments]);
     }
   }, []);
-
   const handleRemoveFile = useCallback((tempId: string) => {
     setAttachedFiles((prev) => prev.filter((att) => att.tempId !== tempId));
   }, []);
-
   const handleRemoveImage = useCallback((tempId: string) => {
     setImageAttachments((prev) => {
       const attachmentToRemove = prev.find(att => att.tempId === tempId);
@@ -765,7 +673,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return prev.filter((att) => att.tempId !== tempId);
     });
   }, []);
-
   const handleClearAttachments = useCallback(() => {
     if (isUploading) {
       toast.error("Please wait for uploads to complete before clearing.");
@@ -780,19 +687,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return [];
     });
   }, [isUploading]);
-
   // Robust image upload handler
   const uploadSingleImage = useCallback(async (attachment: ImageAttachment): Promise<string | null> => {
     if (!userId || !sessionId) return null;
     if (attachment.id) return attachment.id;
     if (!attachment.file) return null;
-
     const updateAttachment = (tempId: string, updates: Partial<ImageAttachment>) => {
       setImageAttachments(prev => prev.map(att => att.tempId === tempId ? { ...att, ...updates } : att));
     };
-
     updateAttachment(attachment.tempId, { uploadProgress: 10, isUploading: true });
-
     try {
       const result = await uploadImage(attachment.file, userId, sessionId);
       if (result.success && result.image) {
@@ -813,7 +716,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return null;
     }
   }, [userId, sessionId]);
-
   const handleRetryUpload = useCallback(async (tempId: string) => {
     // Use the ref to access the current state safely in async callback
     const attachmentToRetry = imageAttachmentsRef.current.find(att => att.tempId === tempId);
@@ -821,9 +723,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       await uploadSingleImage(attachmentToRetry);
     }
   }, [uploadSingleImage]);
-
   // Core sending logic (Refined failure handling)
-  // --- Core Sending Logic (The Orchestrator) ---
   const handleSendMessage = useCallback(
     async (content: string) => {
       // 1. Pre-flight checks
@@ -832,20 +732,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         toast.error("Please wait for current uploads to finish.");
         return;
       }
-
       let finalContent = content;
       let triggerSource: 'auto' | 'manual' | 'none' = 'none';
       let intentComplexity: 'high' | 'low' = 'low';
-
       // 2. Agentive Search Routing (The "Porsche Engine" Logic)
       if (content.trim() && accessToken && agentiveSearchEnabled) {
         let shouldSearch = false;
-
         // Skip auto-search for code content or very long messages
         const hasCodeBlocks = /```[\s\S]*?```/.test(content);
         const isVeryLong = content.length > 1000;
         const hasFileAttachments = attachedFiles.length > 0 || imageAttachments.length > 0;
-
         if (searchMode === 'manual') {
           shouldSearch = true;
           triggerSource = 'manual';
@@ -858,15 +754,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             // Run the intent detection (Cascade Pattern implementation assumed in detectSearchIntent)
             setLocalProcessingStep('detecting_intent');
             console.log('[Agentive Search] Detecting search intent for query:', content);
-
             // Pass previous messages for context-aware detection
             const intent: SearchIntent = await detectSearchIntent(content, messages);
             console.log('[Agentive Search] Intent detection result:', intent);
-
             // Clear intent detection step quickly
             // Use functional update to ensure we only clear if it hasn't changed
             setLocalProcessingStep(currentStep => currentStep === 'detecting_intent' ? null : currentStep);
-
             if (intent.requiresSearch) {
               shouldSearch = true;
               triggerSource = 'auto';
@@ -879,15 +772,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             }
           }
         }
-
         // Execute Search if triggered
         if (shouldSearch) {
           setLocalProcessingStep('searching_web');
           setSearchResults(null);
-
           try {
             const searchService = getSearchService(accessToken);
-
             // Validate and truncate query length (max 800 characters)
             const MAX_QUERY_LENGTH = 800;
             let searchQuery = content;
@@ -896,10 +786,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               searchQuery = searchQuery.substring(0, MAX_QUERY_LENGTH);
               toast.info(`Query truncated to ${MAX_QUERY_LENGTH} characters for search`, { duration: 2000 });
             }
-
             // Dynamic Model Selection: Use Pro if manually requested OR if auto-detected intent is complex.
             const searchModel = (triggerSource === 'manual' || intentComplexity === 'high') ? 'sonar-pro' : 'sonar';
-
             const searchResponse = await searchService.search({
               query: searchQuery,
               session_id: sessionId,
@@ -908,7 +796,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               model: searchModel,
               trigger_source: triggerSource,
             });
-
             // Update UI with results (Optimistic UI)
             setSearchResults({
               summary: searchResponse.search_summary,
@@ -925,7 +812,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 data_freshness: searchResponse.data_freshness
               }
             });
-
             // Inject search context into the AI prompt
             if (searchResponse.search_summary) {
               // The prompt structure ensures the AI prioritizes the fresh data
@@ -948,7 +834,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }
         }
       }
-
       // 3. Global Context Injection
       if (contextEnabled && context && context.is_active && context.context_content) {
         try {
@@ -965,50 +850,40 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           toast.error('Could not validate token limits. Sending without global context.');
         }
       }
-
       // 4. Image Uploads
       let uploadedImageIdsList: string[] = [];
       let uploadFailures = false;
       const imagesToUpload = imageAttachments.filter(att => !att.id && att.file);
-
       if (imagesToUpload.length > 0 && userId && sessionId) {
         setLocalProcessingStep('uploading');
         const uploadPromises = imagesToUpload.map(attachment => uploadSingleImage(attachment));
         const results = await Promise.all(uploadPromises);
         uploadedImageIdsList = results.filter((id): id is string => id !== null);
-
         if (uploadedImageIdsList.length < imagesToUpload.length) {
           uploadFailures = true;
         }
       }
-
       const preUploadedImageIds = imageAttachments
         .filter(att => att.id && !imagesToUpload.some(itu => itu.tempId === att.tempId))
         .map(att => att.id!);
-
       uploadedImageIdsList = [...uploadedImageIdsList, ...preUploadedImageIds];
-
       if (uploadFailures) {
         toast.error("Message not sent due to upload failures. Please check attachments and retry.");
         setLocalProcessingStep(null);
         return;
       }
-
       // 5. File ID Mapping
       const attachedFileNames = attachedFiles.map(f => f.file.name);
       const matchingStoredFiles = (files || []).filter(f => attachedFileNames.includes(f.name)).map(f => f.id);
-
       // 6. Send Message
       try {
         setLocalProcessingStep(null); // Clear local processing before sending to AI
         await sendMessage(finalContent, matchingStoredFiles, uploadedImageIdsList);
         handleClearAttachments(); // Clear only on success
-
         // Reset search mode to 'auto' after sending, if it was manually overridden
         if (searchMode !== 'auto') {
           setSearchMode('auto');
         }
-
       } catch (sendError) {
         const errorMsg = sendError instanceof Error ? sendError.message : 'Failed to send message.';
         toast.error(`Error sending message: ${errorMsg}`);
@@ -1024,7 +899,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       userId, sessionId, uploadSingleImage, context, contextEnabled, selectedModel
     ]
   );
-
   // *** NEW: Handler for the input area search toggle ***
   const handleSearchToggle = useCallback(() => {
     setSearchMode(prevMode => {
@@ -1033,15 +907,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       if (prevMode === 'auto') newMode = 'manual';
       else if (prevMode === 'manual') newMode = 'off';
       else newMode = 'auto';
-
       console.log('[Agentive Search] Search mode changed:', prevMode, '->', newMode);
       const modeLabels = { auto: 'Smart Search: Auto', manual: 'Smart Search: Manual', off: 'Smart Search: Off' };
       toast.success(modeLabels[newMode], { duration: 2000 });
-
       return newMode;
     });
   }, []);
-
   const handleExport = useCallback(
     async (format: 'markdown' | 'json') => {
       const startTime = Date.now();
@@ -1065,20 +936,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     },
     [messages, sessionName]
   );
-
   useEffect(() => {
     if (onRegisterFileCallback) onRegisterFileCallback(handleFileSelect);
   }, [onRegisterFileCallback, handleFileSelect]);
-
   useEffect(() => {
     if (onRegisterStorageCallback) onRegisterStorageCallback(handleStorageClick);
   }, [onRegisterStorageCallback, handleStorageClick]);
-
-
   // ==========================================================================
   // MARK: RENDER HELPERS
   // ==========================================================================
-
   // Elite Modern Empty State: Typographic focus, gradient text, minimalist chips.
   const renderEmptyState = () => {
     const containerVariants = {
@@ -1089,9 +955,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       hidden: { opacity: 0, y: 5 },
       show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } }
     };
-
     const greeting = userName ? `Hello, ${userName}` : "Hello";
-
     return (
       <div className="flex flex-col h-full justify-between items-center px-4 sm:px-6 antialiased">
         <div className="flex-1"></div>
@@ -1100,18 +964,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className='text-center'
+            className='text-center max-w-2xl mx-auto'
           >
-            <h1 className="text-5xl md:text-6xl font-semibold text-transparent bg-clip-text bg-gradient-to-br from-gray-400 via-blue-400 to-purple-500 mb-4">
+            <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white mb-6">
               {greeting}
             </h1>
-            <h2 className="text-4xl md:text-5xl font-semibold text-zinc-500">
+            <h2 className="text-2xl md:text-3xl font-medium text-zinc-400 tracking-tight leading-relaxed">
               How can I help you today?
             </h2>
           </motion.div>
         </div>
-
-        <div className="w-full max-w-4xl mb-8">
+        <div className="w-full max-w-3xl mb-12">
           <motion.div
             className="flex flex-wrap justify-center gap-3"
             variants={containerVariants}
@@ -1122,13 +985,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <motion.button
                 key={index}
                 variants={itemVariants}
-                whileTap={{ scale: 0.95 }}
-                className="px-4 py-2 bg-white/[0.05] hover:bg-white/[0.08] border border-white/[0.1] rounded-full text-sm font-medium text-zinc-300 hover:text-white transition-all duration-150 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                whileTap={{ scale: 0.98 }}
+                className="group px-5 py-2.5 bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] rounded-full text-sm font-medium text-zinc-400 hover:text-white transition-all duration-200 backdrop-blur-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 onClick={() => handleSendMessage(item.prompt)}
                 disabled={isSending}
                 aria-label={`Use prompt: ${item.title}`}
                 title={item.prompt}
               >
+                <span className="mr-2 opacity-50 group-hover:opacity-100 transition-opacity">✨</span>
                 {item.title}
               </motion.button>
             ))}
@@ -1137,12 +1001,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
     );
   };
-
-
   // ==========================================================================
   // MARK: RENDERING
   // ==========================================================================
-
   // *** NEW: Helper to map processing states to UI details ***
   const getProcessingDetails = () => {
     // Show retry indicator if retrying
@@ -1173,12 +1034,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
     return null;
   };
-
   const processingDetails = getProcessingDetails();
-
   return (
     <div className="flex h-full relative overflow-hidden antialiased bg-zinc-950 text-zinc-200 font-sans selection:bg-blue-500/30">
-
       <AnimatePresence>
         {activeLightboxImage && (
           <ImageLightbox
@@ -1187,12 +1045,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           />
         )}
       </AnimatePresence>
-
       <div className="flex-1 flex flex-col relative z-0" role="main">
         {/* --- Header (Floating Glass) --- */}
         <header className="absolute top-0 left-0 right-0 z-20 px-4 pt-4 pb-2 pointer-events-none">
           <div className="max-w-5xl mx-auto w-full pointer-events-auto">
-            <div className="bg-zinc-900/70 backdrop-blur-xl border border-white/10 rounded-2xl shadow-glass-sm flex items-center justify-between h-14 px-4 transition-all duration-300 hover:bg-zinc-900/80">
+            <div className="glass-panel glass-panel-hover rounded-2xl flex items-center justify-between h-14 px-4">
               {/* Left: Title */}
               <div className="flex items-center gap-4 min-w-0 flex-1">
                 {isEditingTitle ? (
@@ -1224,7 +1081,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   </div>
                 )}
               </div>
-
               {/* Center: Space Selector (Desktop) */}
               <div className='hidden md:block absolute left-1/2 transform -translate-x-1/2 max-w-xs w-full'>
                 <div className="flex justify-center">
@@ -1239,7 +1095,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   />
                 </div>
               </div>
-
               {/* Right: Controls */}
               <div className="flex items-center gap-2 flex-1 justify-end">
                 {/* Model Selector */}
@@ -1263,7 +1118,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     <span className="sm:hidden">{currentModelConfig.name.split(' ')[0]}</span>
                     <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${showModelDropdown ? 'rotate-180' : ''}`} />
                   </button>
-
                   <AnimatePresence>
                     {showModelDropdown && (
                       <motion.div
@@ -1305,7 +1159,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     )}
                   </AnimatePresence>
                 </div>
-
                 {/* Snippets Toggle */}
                 <button
                   onClick={handleToggleCodeSnippets}
@@ -1322,7 +1175,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     </span>
                   )}
                 </button>
-
                 {/* Desktop Overflow Menu */}
                 <div className="relative" ref={desktopMenuRef}>
                   <button
@@ -1331,7 +1183,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   >
                     <MoreVertical className="w-4 h-4" />
                   </button>
-
                   <AnimatePresence>
                     {showDesktopMenu && (
                       <motion.div
@@ -1386,7 +1237,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
         </header>
-
         {/* Context Banner (Centered) */}
         {contextEnabled && context?.is_active && context.context_content && (
           <div className="absolute top-20 left-0 right-0 z-10 flex justify-center pointer-events-none">
@@ -1402,7 +1252,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
         )}
-
         {/* --- Messages Area --- */}
         <div className="flex-1 overflow-hidden relative pt-20">
           <div
@@ -1432,13 +1281,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                           />
                         </div>
                       )}
-
                       <MessageList
                         messages={messages}
                         isStreaming={isSending}
                         onImageClick={handleImageClick}
                       />
-
                       {/* *** ENHANCED: Unified Processing Indicator *** */}
                       <AnimatePresence>
                         {processingDetails && (
@@ -1454,14 +1301,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div ref={messagesEndRef} className="h-4" />
             </div>
           </div>
-
           <AnimatePresence>
             {!isNearBottom && messages.length > 0 && !isLoadingHistory && (
               <ScrollToBottomButton onClick={scrollToBottom} />
             )}
           </AnimatePresence>
         </div>
-
         {/* --- Input Area --- */}
         <div className="ios-safe-bottom bg-zinc-950/0 pointer-events-none">
           <div className="max-w-5xl mx-auto w-full px-4 pb-4 pointer-events-auto">
@@ -1478,7 +1323,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 />
               </div>
             )}
-
             <ChatInputArea
               onSend={handleSendMessage}
               onFileSelect={handleFileSelect}
@@ -1490,13 +1334,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               onStorageClick={handleStorageClick}
               storageButtonRef={storageButtonRef}
               onScrollToBottom={undefined}
-              onError={message => toast.error(message)}
+              onError={(message: string) => toast.error(message)}
               searchEnabled={searchMode !== 'off'}
               onSearchToggle={handleSearchToggle}
             />
           </div>
         </div>
-
         {/* Global Error Display */}
         {error && !isLoadingHistory && !isRetrying && (
           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full px-4">
@@ -1509,7 +1352,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         )}
       </div>
-
       {/* --- Code Snippets Sidebar --- */}
       <AnimatePresence>
         {showCodeSnippets && (
@@ -1520,7 +1362,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           />
         )}
       </AnimatePresence>
-
       <div
         className={cn(
           "h-full transition-transform duration-300 ease-in-out bg-zinc-950 border-l border-white/[0.08]",
@@ -1547,7 +1388,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </Suspense>
         )}
       </div>
-
       {/* Lazy Loaded Modals */}
       <Suspense fallback={null}>
         {showStorage && sessionId && (
@@ -1562,7 +1402,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
         )}
-
         {contextEnabled && showContextEditor && (
           <ContextEditorModal
             isOpen={showContextEditor}
@@ -1573,7 +1412,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             currentModel={selectedModel}
           />
         )}
-
         {showSpaceSettings && (
           <SpaceSettingsModal
             spaceId={editingSpaceId}
@@ -1583,7 +1421,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onSave={() => setShowSpaceSettings(false)}
           />
         )}
-
         {showSpacesIntro && (
           <SpacesIntroModal
             isOpen={showSpacesIntro}
@@ -1594,5 +1431,4 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     </div>
   );
 };
-
 export default ChatInterface;
