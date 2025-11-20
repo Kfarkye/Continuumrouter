@@ -249,8 +249,7 @@ async function callGeminiAPI(model: string, contents: any[]): Promise<ReadableSt
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status}. ${errorText}`);
+    const errorText = await response.text();    throw new Error(`Gemini API error: ${response.status}. ${errorText}`);
   }
 
   const parser = (data: string): string | null => {

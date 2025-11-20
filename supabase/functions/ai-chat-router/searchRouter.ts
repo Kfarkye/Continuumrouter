@@ -27,9 +27,32 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
 
     console.log('[ROUTER-DEBUG] Search payload:', JSON.stringify(searchPayload, null, 2));
 
-    const searchResponse = await supabase.functions.invoke('perplexity-search', {
-      body: searchPayload
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    console.log('[ROUTER-DEBUG] Calling perplexity-search directly via fetch...');
+
+    const searchFetchResponse = await fetch(`${supabaseUrl}/functions/v1/perplexity-search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify(searchPayload)
     });
+
+    console.log('[ROUTER-DEBUG] Fetch response status:', searchFetchResponse.status);
+
+    if (!searchFetchResponse.ok) {
+      const errorText = await searchFetchResponse.text();
+      console.error('[ROUTER-DEBUG] Fetch error response:', errorText);
+      throw new Error(`Search function returned ${searchFetchResponse.status}: ${errorText}`);
+    }
+
+    const searchData = await searchFetchResponse.json();
+    console.log('[ROUTER-DEBUG] Search response data:', JSON.stringify(searchData, null, 2));
+
+    const searchResponse = { data: searchData, error: null };
 
     console.log('[ROUTER-DEBUG] Search response status:', searchResponse.error ? 'ERROR' : 'SUCCESS');
     if (searchResponse.error) {
@@ -68,11 +91,21 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
     });
 
   } catch (error: any) {
-    console.error('❌ Search error:', error);
+    console.error('[ROUTER-DEBUG] ========== SEARCH ERROR ==========');
+    console.error('[ROUTER-DEBUG] Error type:', error.constructor.name);
+    console.error('[ROUTER-DEBUG] Error message:', error.message);
+    console.error('[ROUTER-DEBUG] Error stack:', error.stack);
+
     return new Response(JSON.stringify({
       error: 'Search unavailable',
       content: "Search temporarily unavailable.",
-      details: error.message
+      details: error.message,
+      debug_info: {
+        error_type: error.constructor.name,
+        query_received: query,
+        conversation_id: conversationId,
+        user_id: userId
+      }
     }), {status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json'}});
   }
 }
