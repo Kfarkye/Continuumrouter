@@ -67,15 +67,15 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-black">
+    <div className="flex h-screen w-screen overflow-hidden bg-black text-white">
       {/* Left Showcase Panel */}
-      <div className="hidden lg:flex lg:flex-1 flex-col p-10 bg-gradient-to-br from-gray-900 via-black to-black border-r border-white/[0.04]">
+      <div className="hidden lg:flex lg:flex-1 flex-col p-10 bg-gradient-to-br from-gray-900 to-black border-r border-white/[0.04]">
         {/* Logo */}
         <div className="flex items-center gap-3 mb-auto">
           <div className="w-10 h-10 rounded-xl glass-light flex items-center justify-center">
             <Command className="w-5 h-5 text-white/70" strokeWidth={1.5} />
           </div>
-          <span className="text-xl font-semibold text-white/90 tracking-tight">Continuum</span>
+          <span className="text-xl font-semibold tracking-tight">Continuum</span>
         </div>
 
         {/* Feature Showcase */}
@@ -105,24 +105,24 @@ export const LandingPage: React.FC = () => {
         {!showAuthForm ? (
           // Landing View
           <div className="w-full max-w-md text-center animate-fadeIn">
-            <h1 className="text-4xl font-bold text-white/90 mb-8 tracking-tight">Get started</h1>
+            <h1 className="text-5xl font-bold mb-8 tracking-tight">Welcome to Continuum</h1>
 
             <div className="flex gap-4 mb-6">
               <button
                 onClick={() => handleAuthClick(false)}
-                className="flex-1 py-3.5 px-6 min-h-[48px] glass-light hover:glass text-white/90 font-semibold rounded-xl transition-all duration-200 active:scale-98"
+                className="flex-1 py-3.5 px-6 min-h-[48px] bg-white/10 hover:bg-white/20 text-white font-semibold rounded-full transition-all duration-200"
               >
                 Log in
               </button>
               <button
                 onClick={() => handleAuthClick(true)}
-                className="flex-1 py-3.5 px-6 min-h-[48px] glass hover:glass-heavy text-white/90 font-semibold rounded-xl transition-all duration-200 active:scale-98 border-blue-500/20"
+                className="flex-1 py-3.5 px-6 min-h-[48px] bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-full transition-all duration-200"
               >
                 Sign up
               </button>
             </div>
 
-            <button className="text-sm text-white/60 hover:text-white/90 transition-colors duration-200 font-medium">
+            <button className="text-sm hover:underline transition-colors duration-200">
               Try it first
             </button>
           </div>
@@ -131,9 +131,9 @@ export const LandingPage: React.FC = () => {
           <div className="w-full max-w-sm animate-fadeIn">
             <div className="flex flex-col items-center justify-center mb-8">
               <div className="w-16 h-16 rounded-2xl glass flex items-center justify-center mb-4">
-                <Command className="w-8 h-8 text-white/70" strokeWidth={1.5} />
+                <Command className="w-8 h-8" strokeWidth={1.5} />
               </div>
-              <h1 className="text-3xl font-bold text-white/90 tracking-tight">
+              <h1 className="text-3xl font-bold tracking-tight">
                 {isSignUp ? 'Create Account' : 'Welcome Back'}
               </h1>
             </div>
@@ -146,7 +146,7 @@ export const LandingPage: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address"
-                  className="w-full px-4 py-3 glass-dark text-white/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/10 transition-all duration-200 placeholder:text-white/30"
+                  className="w-full px-4 py-3 bg-white/10 text-white/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/10 transition-all duration-200 placeholder:text-white/40"
                   required
                 />
               </div>
@@ -158,7 +158,7 @@ export const LandingPage: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Password"
-                  className="w-full px-4 py-3 glass-dark text-white/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/10 transition-all duration-200 placeholder:text-white/30"
+                  className="w-full px-4 py-3 bg-white/10 text-white/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/10 transition-all duration-200 placeholder:text-white/40"
                   required
                   minLength={6}
                 />
@@ -177,7 +177,7 @@ export const LandingPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 min-h-[48px] glass hover:glass-light disabled:opacity-50 text-white font-semibold rounded-lg transition-all duration-200 active:scale-98 focus-ring"
+                className="w-full py-3 min-h-[48px] bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-semibold rounded-full transition-all duration-200 focus:ring focus:ring-blue-500/50"
               >
                 {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
               </button>
@@ -186,7 +186,7 @@ export const LandingPage: React.FC = () => {
             <div className="mt-8 pt-6 border-t border-white/[0.06] text-center">
               <button
                 onClick={handleBackToLanding}
-                className="text-sm text-white/60 hover:text-white/90 transition-colors duration-200"
+                className="text-sm hover:underline"
               >
                 Back to options
               </button>
