@@ -469,7 +469,8 @@ Deno.serve(async (req: Request) => {
         userId: user.id,
         messages,
         supabase: supabaseAdmin,
-        corsHeaders
+        corsHeaders,
+        userToken: token
       });
     }
 

@@ -7,10 +7,11 @@ interface SearchQueryParams {
   messages: any[];
   supabase: SupabaseClient;
   corsHeaders: Record<string, string>;
+  userToken: string;
 }
 
 export async function handleSearchQuery(params: SearchQueryParams): Promise<Response> {
-  const { query, conversationId, userId, messages, supabase, corsHeaders } = params;
+  const { query, conversationId, userId, messages, supabase, corsHeaders, userToken } = params;
 
   try {
     console.log('[ROUTER-DEBUG] ========== SEARCH QUERY HANDLER ==========');
@@ -36,7 +37,7 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'Authorization': `Bearer ${userToken}`,
       },
       body: JSON.stringify(searchPayload)
     });
