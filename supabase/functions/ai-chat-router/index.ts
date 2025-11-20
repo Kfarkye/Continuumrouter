@@ -142,7 +142,28 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
     return result;
   }
 
-  const creativeWords = ['write', 'story', 'poem', 'creative', 'blog', 'narrative', 'character'];
+  const sportsWords = ['odds', 'bet', 'betting', 'wager', 'spread', 'line', 'over', 'under', 'parlay', 'moneyline', 'nfl', 'nba', 'mlb', 'nhl', 'tnf', 'thursday night football', 'matchup', 'over/under', 'point spread', 'prop bet', 'futures', 'picks', 'cover'];
+  if (sportsWords.some(word => userText.includes(word))) {
+    const profile = ROUTER_CONFIG['gemini'];
+    const result = {
+      taskType: 'sports',
+      profile,
+      reasoning: 'Sports betting analysis task.',
+      agentName: 'Sports Intelligence',
+      intentDetected: 'Sports betting analysis'
+    };
+    if (DEBUG_ROUTING) {
+      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
+        requestId,
+        taskType: result.taskType,
+        agentName: result.agentName,
+        trigger: 'sports keywords'
+      });
+    }
+    return result;
+  }
+
+  const creativeWords = ['story', 'poem', 'creative', 'narrative', 'character', 'fiction', 'novel', 'screenplay', 'protagonist', 'plot'];
   if (creativeWords.some(word => userText.includes(word))) {
     const profile = ROUTER_CONFIG['openai'];
     const result = {
