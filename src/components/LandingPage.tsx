@@ -11,7 +11,11 @@ const examples = [
   { line1: 'Explain quantum computing', line2: 'like I\'m five years old' },
 ];
 
-export const LandingPage: React.FC = () => {
+interface LandingPageProps {
+  onDemoMode?: () => void;
+}
+
+export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
@@ -122,7 +126,10 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
 
-            <button className="text-sm hover:underline transition-colors duration-200">
+            <button
+              onClick={onDemoMode}
+              className="text-sm text-white/60 hover:text-white hover:underline transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded px-2 py-1"
+            >
               Try it first
             </button>
           </div>

@@ -40,6 +40,7 @@ const App: React.FC = () => {
   // Authentication State
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
 
   // Application State
   const [appState, setAppState] = useState<AppState>({
@@ -121,7 +122,13 @@ const App: React.FC = () => {
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null);
+    setDemoMode(false);
     toast.success('Signed out successfully');
+  }, []);
+
+  const handleDemoMode = useCallback(() => {
+    setDemoMode(true);
+    toast.success('Demo mode activated! Explore without signing up.', { duration: 3000 });
   }, []);
 
   const handleModeChange = useCallback((mode: 'chat' | 'deepthink' | 'tutorial' | 'dashboard' | 'reply_assistant') => {
@@ -211,8 +218,8 @@ const App: React.FC = () => {
     return <LoadingSpinner message="Loading..." fullScreen />;
   }
 
-  if (!session) {
-    return <LandingPage />;
+  if (!session && !demoMode) {
+    return <LandingPage onDemoMode={handleDemoMode} />;
   }
 
   const handleClinicianIntroClose = () => {
@@ -248,6 +255,24 @@ const App: React.FC = () => {
         }}
       />
 
+      {/* Demo Mode Banner */}
+      {demoMode && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-md border-b border-white/10">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium text-white/90">Demo Mode - Limited features, data not saved</span>
+            </div>
+            <button
+              onClick={() => setDemoMode(false)}
+              className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-full transition-all duration-200"
+            >
+              Sign up to save your work
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Clinician Spaces Intro Modal */}
       <ClinicianSpacesIntroModal
         isOpen={showClinicianIntro}
@@ -257,7 +282,7 @@ const App: React.FC = () => {
       />
 
       {/* Global container with system font and bg-black */}
-      <div className="h-screen w-screen flex overflow-hidden bg-black" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \'SF Pro Display\', \'SF Pro Text\', \'Helvetica Neue\', Helvetica, Arial, sans-serif' }}>
+      <div className={`h-screen w-screen flex overflow-hidden bg-black ${demoMode ? 'pt-14' : ''}`} style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \'SF Pro Display\', \'SF Pro Text\', \'Helvetica Neue\', Helvetica, Arial, sans-serif' }}>
 
         {/* Mobile Sidebar Backdrop (Overlay) */}
         {appState.sidebarOpen && (
