@@ -1,130 +1,107 @@
-// ============================================================================
-// IMPORTS & EDGE RUNTIME CONFIGURATION
-// ============================================================================
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
-import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { corsHeaders } from './_shared/cors.ts';
+import { handleSearchQuery } from './searchRouter.ts';
 
-// ============================================================================
-// CONFIGURATION & ENVIRONMENT VARIABLES
-// ============================================================================
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id, cache-control',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-};
+const env = Deno.env.toObject();
 
 const CONFIG = {
-  MAX_IMAGES: 10,
-  MAX_MESSAGE_LENGTH: 100000,
-  HISTORY_LIMIT: 20,
-  API_TIMEOUT_MS: 90000,
-  IMAGE_BUCKET_NAME: 'chat-uploads',
-  MAX_TOKENS_DEFAULT: 8192
-};
-
-const env = {
-  ANTHROPIC_API_KEY: Deno.env.get("ANTHROPIC_API_KEY"),
-  GEMINI_API_KEY: Deno.env.get("GEMINI_API_KEY"),
-  OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY"),
-  SUPABASE_URL: Deno.env.get('SUPABASE_URL'),
-  SUPABASE_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
-  SUPABASE_ANON_KEY: Deno.env.get('SUPABASE_ANON_KEY')
-};
+  API_TIMEOUT_MS: 180000,
+  MAX_TOKENS_DEFAULT: 6000,
+  IMAGE_BUCKET_NAME: 'chat-uploads'
+} as const;
 
 if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("[INIT] CRITICAL: Missing Supabase environment variables.");
+  throw new Error("Configuration Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing.");
 }
 
-const supabaseAdmin = createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 const encoder = new TextEncoder();
 
-// ============================================================================
-// UTILITIES & LOGGING
-// ============================================================================
-function log(level: string, message: string, metadata: Record<string, any> = {}) {
+function log(level: string, message: string, meta: Record<string, unknown> = {}) {
   console.log(JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
     message,
-    ...metadata
+    ...meta
   }));
 }
 
 log("INFO", "[INIT] AI Chat Router Initializing.");
 
-// ============================================================================
-// ROUTER CONFIGURATION
-// ============================================================================
-const ROUTER_CONFIG = {
-  'claude-3.5-sonnet': {
+interface RouteProfile {
+  provider: 'anthropic' | 'openai' | 'gemini';
+  model: string;
+  limits: {
+    maxOutputTokens: number;
+    timeoutMs: number;
+    temperature: number;
+  };
+}
+
+const ROUTER_CONFIG: Record<string, RouteProfile> = {
+  'anthropic': {
     provider: 'anthropic',
     model: 'claude-sonnet-4-5-20250929',
-    strengths: ['nuance', 'writing', 'reasoning', 'long-context', 'analysis', 'speed', 'vision']
+    limits: {
+      maxOutputTokens: 8000,
+      timeoutMs: 180000,
+      temperature: 0.7
+    }
   },
-  'gpt-4o': {
+  'openai': {
     provider: 'openai',
     model: 'gpt-4o',
-    strengths: ['logic', 'multimodal', 'analysis', 'structured-output', 'vision', 'coding']
+    limits: {
+      maxOutputTokens: 8000,
+      timeoutMs: 180000,
+      temperature: 0.7
+    }
   },
-  'gemini-1.5-flash': {
+  'gemini': {
     provider: 'gemini',
     model: 'gemini-3-pro-preview',
-    strengths: ['speed', 'cost', 'summarization', 'quick-tasks', 'vision']
+    limits: {
+      maxOutputTokens: 6000,
+      timeoutMs: 180000,
+      temperature: 0.7
+    }
   }
 };
 
-const DEFAULT_MODEL_KEY = 'claude-3.5-sonnet';
+const DEFAULT_MODEL_KEY = 'gemini';
 
-// ============================================================================
-// INTELLIGENT ROUTING LOGIC
-// ============================================================================
-function routeRequest(userMessage: string, imageCount: number, hint?: string) {
-  if (hint && hint !== 'auto') {
-    const profileKey = Object.keys(ROUTER_CONFIG).find(key => ROUTER_CONFIG[key as keyof typeof ROUTER_CONFIG].provider === hint);
-    if (profileKey) {
-      const profile = ROUTER_CONFIG[profileKey as keyof typeof ROUTER_CONFIG];
-      return { taskType: 'override', profile, reasoning: `User override selected ${hint}.` };
-    }
-  }
+interface TaskRouteResult {
+  taskType: string;
+  profile: RouteProfile;
+  reasoning: string;
+}
+
+function decideRoute(messages: any[], imageCount: number): TaskRouteResult {
+  const lastMessage = messages[messages.length - 1];
+  const userText = lastMessage?.content?.toLowerCase() || '';
 
   if (imageCount > 0) {
-    if (imageCount >= 3 || /\b(analyze|interpret|diagram|chart|vision|look|code|screenshot|compare)\b/i.test(userMessage)) {
-      const profile = ROUTER_CONFIG['gpt-4o'];
-      return { taskType: 'multimodal_heavy', profile, reasoning: `Complex vision task or high image count (${imageCount}).` };
-    }
-    const profile = ROUTER_CONFIG[DEFAULT_MODEL_KEY];
-    return { taskType: 'multimodal_standard', profile, reasoning: `Standard image task (${imageCount}).` };
+    const profile = ROUTER_CONFIG['anthropic'];
+    return { taskType: 'vision', profile, reasoning: `Vision task with ${imageCount} images.` };
   }
 
-  const patterns = {
-    technical: /\b(code|function|debug|json|api|sql|regex|algorithm|error message|javascript|python|typescript)\b/i,
-    quick: /\b(what is|define|explain briefly|summarize|tl;dr|quick fact)\b/i,
-    writing: /\b(email|draft|compose|write a story|blog post|creative|nuance)\b/i
-  };
-
-  if (patterns.technical.test(userMessage)) {
-    const profile = ROUTER_CONFIG['gpt-4o'];
-    return { taskType: 'technical', profile, reasoning: `Technical/Code task detected.` };
+  const codeWords = ['code', 'function', 'debug', 'implement', 'algorithm', 'error', 'bug'];
+  if (codeWords.some(word => userText.includes(word))) {
+    const profile = ROUTER_CONFIG['anthropic'];
+    return { taskType: 'code', profile, reasoning: 'Code-related task.' };
   }
 
-  if (patterns.quick.test(userMessage) && userMessage.length < 300) {
-    const profile = ROUTER_CONFIG['gemini-1.5-flash'];
-    return { taskType: 'quick_task', profile, reasoning: `Brief query detected.` };
-  }
-
-  if (patterns.writing.test(userMessage)) {
-    const profile = ROUTER_CONFIG['claude-3.5-sonnet'];
-    return { taskType: 'writing', profile, reasoning: `Writing task detected.` };
+  const creativeWords = ['write', 'story', 'poem', 'creative', 'blog'];
+  if (creativeWords.some(word => userText.includes(word))) {
+    const profile = ROUTER_CONFIG['openai'];
+    return { taskType: 'creative', profile, reasoning: 'Creative writing task.' };
   }
 
   const profile = ROUTER_CONFIG[DEFAULT_MODEL_KEY];
-  return { taskType: 'general', profile, reasoning: `General conversation.` };
+  return { taskType: 'general', profile, reasoning: `General conversation. Routed to default (Gemini).` };
 }
 
-// =============================================================================
-// API STREAM HANDLING
-// =============================================================================
 async function processStream(response: Response, parser: (data: string) => string | null, provider: string): Promise<ReadableStream> {
   if (!response.body) throw new Error(`No response body from ${provider} API.`);
 
@@ -170,10 +147,17 @@ async function processStream(response: Response, parser: (data: string) => strin
           if (data === '[DONE]') continue;
 
           try {
+            if (provider === 'Gemini') {
+              log("DEBUG", `[GEMINI-STREAM] Raw data chunk received`, { dataLength: data.length, dataPreview: data.substring(0, 200) });
+            }
             const chunk = parser(data);
-            if (chunk) controller.enqueue(encoder.encode(chunk));
+            if (chunk) {
+              controller.enqueue(encoder.encode(chunk));
+            } else if (provider === 'Gemini') {
+              log("WARN", `[GEMINI-STREAM] Parser returned null for chunk`);
+            }
           } catch (e) {
-            log("ERROR", `Failed to parse chunk from ${provider}`, { error: (e as Error).message });
+            log("ERROR", `Failed to parse chunk from ${provider}`, { error: (e as Error).message, data: data.substring(0, 200) });
           }
         }
       }
@@ -181,9 +165,6 @@ async function processStream(response: Response, parser: (data: string) => strin
   });
 }
 
-// =============================================================================
-// PROVIDER API IMPLEMENTATIONS
-// =============================================================================
 async function callAnthropicAPI(model: string, messages: any[], systemPrompt?: string): Promise<ReadableStream> {
   if (!env.ANTHROPIC_API_KEY) throw new Error("Configuration Error: Anthropic API key is missing.");
 
@@ -273,16 +254,32 @@ async function callGeminiAPI(model: string, contents: any[]): Promise<ReadableSt
   }
 
   const parser = (data: string): string | null => {
-    const parsed = JSON.parse(data);
-    return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    try {
+      const parsed = JSON.parse(data);
+
+      log("DEBUG", "[GEMINI-PARSER] Parsed JSON structure", {
+        hasCandidates: !!parsed?.candidates,
+        candidatesLength: parsed?.candidates?.length,
+        hasContent: !!parsed?.candidates?.[0]?.content,
+        hasParts: !!parsed?.candidates?.[0]?.content?.parts,
+        partsLength: parsed?.candidates?.[0]?.content?.parts?.length,
+        keys: Object.keys(parsed || {}).join(', ')
+      });
+
+      const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        log("DEBUG", "[GEMINI-PARSER] Successfully extracted text", { textLength: text.length });
+      }
+      return text || null;
+    } catch (e) {
+      log("ERROR", "[GEMINI-PARSER] JSON parse failed", { error: (e as Error).message });
+      return null;
+    }
   };
 
   return processStream(response, parser, "Gemini");
 }
 
-// =============================================================================
-// UTILITIES
-// =============================================================================
 function sendSSE(controller: ReadableStreamDefaultController, data: Record<string, unknown>) {
   try {
     const jsonData = JSON.stringify(data);
@@ -350,313 +347,139 @@ async function fetchAndEncodeImages(imageIds: string[], userId: string): Promise
     try {
       const arrayBuffer = await fileData.arrayBuffer();
       const base64 = encodeBase64(arrayBuffer);
-
       return {
-        id: record.id,
-        mimeType: record.mime_type,
-        base64Data: base64
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: record.mime_type,
+          data: base64
+        }
       };
-    } catch (e) {
-      log("ERROR", `[IMAGES] Failed to encode image ${record.id}`, { error: (e as Error).message });
+    } catch (error) {
+      log("ERROR", `[IMAGES] Failed to encode image ${record.id}`, { error: (error as Error).message });
       return null;
     }
   });
 
   const results = await Promise.all(downloadPromises);
-  const successfulImages = results.filter((img): img is NonNullable<typeof img> => img !== null);
-
-  log("DEBUG", "[IMAGES] Image processing complete", {
-    successCount: successfulImages.length,
-    requestedCount: imageIds.length
-  });
-
-  return successfulImages;
+  return results.filter(Boolean);
 }
 
-// =============================================================================
-// MESSAGE FORMATTING
-// =============================================================================
-function cloneMessages(messages: any[]) {
-  return structuredClone(messages);
+function encodeBase64(buffer: ArrayBuffer): string {
+  const uint8Array = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  return btoa(binary);
 }
 
-const ensureStringContent = (content: any): string => {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    const textBlock = content.find(block =>
-      (block.type === 'text' && typeof block.text === 'string') || typeof block === 'string'
-    );
-    if (textBlock) return typeof textBlock === 'string' ? textBlock : textBlock.text;
-  }
-  try {
-    return JSON.stringify(content);
-  } catch {
-    return String(content);
-  }
-};
-
-function formatForAnthropic(messages: any[], images: any[]) {
-  const clonedMessages = cloneMessages(messages);
-  const systemPrompt = clonedMessages.find((m: any) => m.role === 'system')?.content;
-
-  const apiMessages = clonedMessages
-    .filter((m: any) => m.role !== 'system')
-    .map((m: any) => ({
-      role: m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content
-    }));
-
-  const lastMessage = apiMessages[apiMessages.length - 1];
-
-  if (lastMessage && lastMessage.role === 'user' && images.length > 0) {
-    const textContent = ensureStringContent(lastMessage.content);
-    const contentBlocks: any[] = [{ type: 'text', text: textContent }];
-
-    images.forEach((img: any) => {
-      contentBlocks.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: img.mimeType,
-          data: img.base64Data
-        }
-      });
-    });
-
-    lastMessage.content = contentBlocks;
-  }
-
-  const validatedMessages: any[] = [];
-  let lastRole: string | null = null;
-
-  for (const message of apiMessages) {
-    if (message.role === lastRole) {
-      const previousMessage = validatedMessages[validatedMessages.length - 1];
-      if (previousMessage) {
-        const prevContent = Array.isArray(previousMessage.content)
-          ? previousMessage.content
-          : [{ type: 'text', text: ensureStringContent(previousMessage.content) }];
-        const currentContent = Array.isArray(message.content)
-          ? message.content
-          : [{ type: 'text', text: ensureStringContent(message.content) }];
-        previousMessage.content = [...prevContent, ...currentContent];
+function formatMessagesForProvider(
+  provider: 'anthropic' | 'openai' | 'gemini',
+  messages: any[],
+  images: any[]
+): any[] {
+  if (provider === 'anthropic') {
+    return messages.map((msg: any, idx: number) => {
+      if (msg.role === 'user' && idx === messages.length - 1 && images.length > 0) {
+        return {
+          role: 'user',
+          content: [
+            { type: 'text', text: msg.content },
+            ...images
+          ]
+        };
       }
-    } else {
-      validatedMessages.push(message);
-      lastRole = message.role;
-    }
-  }
-
-  return { apiMessages: validatedMessages, systemPrompt };
-}
-
-function formatForOpenAI(messages: any[], images: any[]) {
-  const clonedMessages = cloneMessages(messages);
-  const formattedMessages = clonedMessages.map((m: any) => ({
-    role: m.role === 'model' ? 'assistant' : m.role,
-    content: m.content
-  }));
-
-  const lastMessage = formattedMessages[formattedMessages.length - 1];
-
-  if (lastMessage && lastMessage.role === 'user' && images.length > 0) {
-    const textContent = ensureStringContent(lastMessage.content);
-    const contentBlocks: any[] = [{ type: 'text', text: textContent }];
-
-    images.forEach((img: any) => {
-      contentBlocks.push({
-        type: 'image_url',
-        image_url: {
-          url: `data:${img.mimeType};base64,${img.base64Data}`,
-          detail: 'auto'
-        }
-      });
+      return { role: msg.role, content: msg.content };
     });
-
-    lastMessage.content = contentBlocks;
-  }
-
-  return formattedMessages;
-}
-
-function formatForGemini(messages: any[], images: any[]) {
-  const clonedMessages = cloneMessages(messages);
-  const contents: any[] = [];
-
-  let systemInstruction = clonedMessages.find((m: any) => m.role === 'system')?.content;
-  const historyMessages = clonedMessages.filter((m: any) => m.role !== 'system');
-
-  historyMessages.forEach((m: any, index: number) => {
-    const role = m.role === 'user' ? 'user' : 'model';
-    const textContent = ensureStringContent(m.content);
-    const parts: any[] = [{ text: textContent }];
-
-    if (m.role === 'user' && index === historyMessages.length - 1 && images.length > 0) {
-      images.forEach((img: any) => {
-        parts.push({
-          inline_data: {
-            mime_type: img.mimeType,
-            data: img.base64Data
+  } else if (provider === 'openai') {
+    return messages.map((msg: any, idx: number) => {
+      if (msg.role === 'user' && idx === messages.length - 1 && images.length > 0) {
+        const imageUrls = images.map((img: any) => ({
+          type: 'image_url',
+          image_url: {
+            url: `data:${img.source.media_type};base64,${img.source.data}`
           }
-        });
-      });
-    }
-
-    contents.push({ role, parts });
-  });
-
-  if (systemInstruction) {
-    if (contents.length > 0 && contents[0].role === 'user') {
-      contents[0].parts.unshift({ text: `[SYSTEM INSTRUCTION: ${systemInstruction}]\n\n` });
-    } else {
-      contents.unshift({
-        role: 'user',
-        parts: [{ text: systemInstruction }]
-      });
-    }
-  }
-
-  const validatedContents: any[] = [];
-  let lastRole: string | null = null;
-
-  for (const content of contents) {
-    if (content.role === lastRole) {
-      const previousContent = validatedContents[validatedContents.length - 1];
-      if (previousContent) {
-        previousContent.parts.push(...content.parts);
+        }));
+        return {
+          role: 'user',
+          content: [
+            { type: 'text', text: msg.content },
+            ...imageUrls
+          ]
+        };
       }
-    } else {
-      validatedContents.push(content);
-      lastRole = content.role;
-    }
+      return msg;
+    });
+  } else if (provider === 'gemini') {
+    return messages.map((msg: any) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }]
+    }));
   }
 
-  return validatedContents;
+  return messages;
 }
 
-// =============================================================================
-// MAIN REQUEST HANDLER
-// =============================================================================
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   const requestId = crypto.randomUUID();
-  const startTime = performance.now();
+  log("INFO", "[REQUEST] Incoming Request", {
+    method: req.method,
+    url: req.url,
+    requestId
+  });
 
-  log("INFO", "[REQUEST] Incoming Request", { method: req.method, url: req.url, requestId });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
-    if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-    }
-
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-        status: 401,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
-      });
+    if (!authHeader) throw new Error("Authorization header missing.");
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) throw new Error("Authentication failed.");
+
+    const body = await req.json();
+    const { messages = [], conversationId, preferredProvider, imageIds, mode } = body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw new Error("Invalid request: 'messages' must be a non-empty array.");
     }
 
-    const supabaseUserClient = createClient(env.SUPABASE_URL!, env.SUPABASE_ANON_KEY!, {
-      global: { headers: { Authorization: authHeader } }
-    });
+    const lastUserMessage = messages[messages.length - 1];
+    const userText = typeof lastUserMessage?.content === 'string' ? lastUserMessage.content.toLowerCase() : '';
 
-    const { data: { user } } = await supabaseUserClient.auth.getUser();
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid token' }), {
-        status: 401,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const payload = await req.json();
-    const { sessionId, userMessage, imageIds, providerHint, memories, spaceId } = payload;
-
-    if (!sessionId || !userMessage) {
-      return new Response(JSON.stringify({ error: 'Missing required fields (sessionId, userMessage)' }), {
-        status: 400,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
-      });
-    }
-
-    if (userMessage.length > CONFIG.MAX_MESSAGE_LENGTH) {
-      return new Response(JSON.stringify({ error: `Message exceeds maximum length` }), {
-        status: 400,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
-      });
-    }
-
-    if (imageIds && imageIds.length > CONFIG.MAX_IMAGES) {
-      return new Response(JSON.stringify({ error: `Exceeds maximum image count` }), {
-        status: 400,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const conversationPromise = supabaseAdmin
-      .from('ai_conversations')
-      .upsert({
-        session_id: sessionId,
-        user_id: user.id,
-        space_id: spaceId || null
-      }, {
-        onConflict: 'session_id',
-        ignoreDuplicates: false
-      })
-      .select('id')
-      .single();
-
-    const [conversationResult, domainContext, images] = await Promise.all([
-      conversationPromise,
-      getDomainContext(user.id),
-      fetchAndEncodeImages(imageIds || [], user.id)
-    ]);
-
-    if (conversationResult.error || !conversationResult.data) {
-      log("ERROR", "[DB] Failed to manage conversation state", {
-        requestId,
-        error: conversationResult.error?.message
-      });
-      throw new Error(`Database error: Failed to manage conversation state.`);
-    }
-
-    const conversationId = conversationResult.data.id;
-
-    if (imageIds && imageIds.length > images.length) {
-      log("WARN", "[IMAGES] Partial failure in image processing", {
-        requestId,
-        expectedCount: imageIds.length,
-        processedCount: images.length
-      });
-    }
-
-    const historyResult = await supabaseAdmin
-      .from('ai_messages')
-      .select('role, content')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(CONFIG.HISTORY_LIMIT);
-
-    const conversationHistory = historyResult.data || [];
-
-    let systemMessage = `You are a helpful, intelligent AI assistant. Respond accurately, concisely, and naturally. Current Date: ${new Date().toISOString()}.`;
-
-    if (domainContext) {
-      systemMessage += `\n\n${domainContext}`;
-    }
-
-    if (memories && memories.length > 0) {
-      systemMessage += `\n\nRelevant Context/Memories:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
-    }
-
-    const conversationMessages = [
-      { role: 'system', content: systemMessage },
-      ...conversationHistory,
-      { role: 'user', content: userMessage }
+    const searchTriggers = [
+      /^search[: ]/i,
+      /^find[: ]/i,
+      /^look up[: ]/i,
+      /what (is|are) the latest/i,
+      /current (news|events|information)/i,
+      /today'?s/i
     ];
 
-    const routerDecision = routeRequest(userMessage, images.length, providerHint);
-    const { profile, taskType, reasoning } = routerDecision;
-    const { provider, model } = profile;
+    const isSearchQuery = searchTriggers.some(trigger => trigger.test(userText));
+
+    if (isSearchQuery) {
+      log("INFO", "[ROUTER] Search query detected, routing to perplexity-search", { requestId });
+      return await handleSearchQuery({
+        query: lastUserMessage.content,
+        conversationId,
+        userId: user.id,
+        messages,
+        supabase: supabaseAdmin,
+        corsHeaders
+      });
+    }
+
+    const startTime = performance.now();
+
+    const images = await fetchAndEncodeImages(imageIds || [], user.id);
+
+    const { taskType, profile, reasoning } = decideRoute(messages, images.length);
+    const { provider, model, limits } = profile;
 
     log("INFO", "[ROUTER] Decision Made", {
       requestId,
@@ -667,28 +490,27 @@ Deno.serve(async (req) => {
       imageCount: images.length
     });
 
-    let apiPayload: any;
-    let anthropicSystemPrompt: string | undefined;
+    log("INFO", `[${provider.toUpperCase()}] Using limits`, {
+      taskType,
+      maxOutputTokens: limits.maxOutputTokens,
+      timeoutMs: limits.timeoutMs,
+      temperature: limits.temperature,
+      model
+    });
 
-    if (provider === 'anthropic') {
-      const { apiMessages, systemPrompt } = formatForAnthropic(conversationMessages, images);
-      apiPayload = apiMessages;
-      anthropicSystemPrompt = systemPrompt;
-    } else if (provider === 'openai') {
-      apiPayload = formatForOpenAI(conversationMessages, images);
-    } else if (provider === 'gemini') {
-      apiPayload = formatForGemini(conversationMessages, images);
-    } else {
-      throw new Error(`Unsupported provider configuration: ${provider}`);
-    }
+    const domainContext = await getDomainContext(user.id);
+    let anthropicSystemPrompt = domainContext || "You are a helpful AI assistant.";
+
+    const apiPayload = formatMessagesForProvider(provider, messages, images);
 
     supabaseAdmin.from('ai_messages').insert({
       conversation_id: conversationId,
       role: 'user',
-      content: userMessage,
+      content: lastUserMessage.content,
       metadata: {
-        attached_image_ids: imageIds || [],
-        input_source: 'router_v2'
+        image_count: images.length,
+        has_images: images.length > 0,
+        mode: mode || 'chat'
       }
     }).then(({ error }) => {
       if (error) log("ERROR", "[DB-ASYNC] Failed to persist user message", {
@@ -723,11 +545,34 @@ Deno.serve(async (req) => {
           const reader = apiStream.getReader();
           let assistantResponseText = '';
           const decoder = new TextDecoder();
+          const streamStartTime = performance.now();
+          const STREAM_TIMEOUT_MS = 180000;
+          let lastChunkTime = performance.now();
 
           while (true) {
-            const { done, value } = await reader.read();
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Stream read timeout')), 30000)
+            );
+
+            const readPromise = reader.read();
+
+            let result;
+            try {
+              result = await Promise.race([readPromise, timeoutPromise]);
+            } catch (timeoutError) {
+              log("ERROR", "[STREAM-TIMEOUT] Stream read timed out", {
+                requestId,
+                provider: streamProvider,
+                elapsedMs: performance.now() - streamStartTime,
+                timeSinceLastChunk: performance.now() - lastChunkTime
+              });
+              throw new Error(`Stream read timeout after 30 seconds of inactivity`);
+            }
+
+            const { done, value } = result as { done: boolean; value?: Uint8Array };
             if (done) break;
 
+            lastChunkTime = performance.now();
             const chunk = decoder.decode(value);
             assistantResponseText += chunk;
 
@@ -735,6 +580,15 @@ Deno.serve(async (req) => {
               type: 'text',
               content: chunk
             });
+
+            if (performance.now() - streamStartTime > STREAM_TIMEOUT_MS) {
+              log("ERROR", "[STREAM-TIMEOUT] Total stream time exceeded", {
+                requestId,
+                provider: streamProvider,
+                elapsedMs: performance.now() - streamStartTime
+              });
+              throw new Error(`Stream exceeded maximum duration of ${STREAM_TIMEOUT_MS}ms`);
+            }
           }
 
           sendSSE(controller, { type: 'done' });
@@ -787,39 +641,22 @@ Deno.serve(async (req) => {
 
     return new Response(stream, {
       headers: {
-        ...CORS_HEADERS,
+        ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Request-Id': requestId
+        'Connection': 'keep-alive'
       }
     });
 
   } catch (error) {
-    const durationMs = performance.now() - startTime;
-    log("ERROR", "[HANDLER] Uncaught request error", {
+    log("ERROR", "[REQUEST] Request failed", {
       requestId,
       error: (error as Error).message,
-      stack: (error as Error).stack,
-      durationMs
+      stack: (error as Error).stack
     });
-
-    let status = 500;
-    const errorMessage = (error as Error).message;
-
-    if (errorMessage.includes("Unauthorized") || errorMessage.includes("Missing authorization")) {
-      status = 401;
-    } else if (errorMessage.includes("Missing required fields") || errorMessage.includes("exceeds maximum")) {
-      status = 400;
-    }
-
-    return new Response(JSON.stringify({ error: errorMessage || "Internal Server Error" }), {
-      status: status,
-      headers: {
-        ...CORS_HEADERS,
-        'Content-Type': 'application/json',
-        'X-Request-Id': requestId
-      }
-    });
+    return new Response(
+      JSON.stringify({ error: (error as Error).message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });
