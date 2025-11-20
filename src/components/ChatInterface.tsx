@@ -159,15 +159,15 @@ const ProcessingIndicator: React.FC<{ step: string; progress: number; modelName:
       </p>
       {/* Only show progress bar if progress is meaningful */}
       {progress > 0 && (
-          <div
-            className="w-full bg-zinc-700 rounded-full h-1 mt-1.5 overflow-hidden"
-            role="progressbar"
-            aria-valuenow={progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            >
-            <div className="bg-blue-500 h-1 transition-all duration-500" style={{ width: `${Math.max(10, progress)}%` }} />
-          </div>
+        <div
+          className="w-full bg-zinc-700 rounded-full h-1 mt-1.5 overflow-hidden"
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div className="bg-blue-500 h-1 transition-all duration-500" style={{ width: `${Math.max(10, progress)}%` }} />
+        </div>
       )}
     </div>
   </motion.div>
@@ -861,7 +861,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             intentComplexity = intent.complexity || 'low';
             console.log('[Agentive Search] Auto-triggering web search with complexity:', intentComplexity);
             // Provide subtle UI feedback for auto-trigger
-            toast('Smart Search activated.', { icon: <Globe className='w-4 h-4 text-blue-500'/>, duration: 1500 });
+            toast('Smart Search activated.', { icon: <Globe className='w-4 h-4 text-blue-500' />, duration: 1500 });
           } else {
             console.log('[Agentive Search] No search needed for this query');
           }
@@ -1136,7 +1136,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const processingDetails = getProcessingDetails();
 
   return (
-    <div className="flex h-full relative overflow-hidden antialiased bg-zinc-950 text-zinc-200">
+    <div className="flex h-full relative overflow-hidden antialiased bg-zinc-950 text-zinc-200 font-sans selection:bg-blue-500/30">
 
       <AnimatePresence>
         {activeLightboxImage && (
@@ -1147,331 +1147,271 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         )}
       </AnimatePresence>
 
-      <div className="flex-1 flex flex-col" role="main">
-        {/* --- Header --- */}
-        <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-xl border-b border-white/[0.05]">
-          <div className="hidden md:flex items-center justify-between px-4 h-14">
-            {/* Left: Title */}
-            <div className="flex items-center gap-4 min-w-0 flex-1">
-              {isEditingTitle ? (
-                <input
-                  ref={titleInputRef}
-                  type="text"
-                  value={editedTitle}
-                  onChange={(e) => setEditedTitle(e.target.value)}
-                  onKeyDown={handleTitleKeyDown}
-                  onBlur={handleTitleSave}
-                  className="px-3 py-1.5 bg-zinc-800/50 text-zinc-100 text-sm font-medium rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500/70 transition-shadow w-full max-w-md"
-                  maxLength={100}
-                  aria-label="Edit session title"
-                />
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <h1 className="text-sm font-medium text-zinc-200 truncate" title={sessionName || 'New Session'}>{sessionName || 'New Session'}</h1>
-                  {onUpdateSessionName && sessionId && (
-                    <button
-                      onClick={handleTitleEdit}
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                      title="Edit title"
-                      aria-label="Edit session title"
-                      disabled={isSending || isUploading || isLocalProcessing}
-                    >
-                      <Edit2 className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-              )}
-              {messages.length > 0 && !isEditingTitle && (
-                <span className="text-xs text-zinc-500 font-normal">({messages.length})</span>
-              )}
-            </div>
-
-            {/* Center: Space Selector */}
-            <div className='absolute left-1/2 transform -translate-x-1/2 max-w-md'>
-              <SpaceSelector
-                userId={userId}
-                selectedSpaceId={selectedSpaceId}
-                onSelectSpace={setSelectedSpaceId}
-                onCreateSpace={() => {
-                  setEditingSpaceId(null);
-                  setShowSpaceSettings(true);
-                }}
-              />
-            </div>
-
-            {/* Right: Controls */}
-            <div className="flex items-center gap-1 flex-1 justify-end">
-              {/* Model Selector */}
-              <div className="relative" ref={dropdownRef} onKeyDown={handleDropdownKeyDown}>
-                <button
-                  ref={modelButtonRef}
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
-                  className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-zinc-400 hover:text-white bg-transparent hover:bg-white/[0.05] rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group"
-                  disabled={isSending || isUploading}
-                  aria-haspopup="listbox"
-                  aria-expanded={showModelDropdown}
-                  aria-label={`Select Model: ${currentModelConfig.name}`}
-                >
-                  {selectedModel === 'auto' && activeModelConfig ? (
-                    <span className='flex items-center gap-1.5' title={`Auto-routed to ${activeModelConfig.name}`}>
-                      <Zap className="w-3.5 h-3.5 text-yellow-500/80 group-hover:text-yellow-500 transition-colors" />
-                      <span className='text-zinc-400 group-hover:text-white'>{activeModelConfig.name}</span>
-                    </span>
-                  ) : (
-                    <span>{currentModelConfig.name}</span>
-                  )}
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${showModelDropdown ? 'rotate-180' : ''}`} />
-                </button>
-
-                <AnimatePresence>
-                  {showModelDropdown && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      transition={{ duration: 0.1, ease: 'easeOut' }}
-                      className="absolute right-0 top-full mt-2 w-72 p-3 bg-zinc-800/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-xl z-50"
-                      role="listbox"
-                    >
-                      {modelKeys.map((key, index) => {
-                        const config = MODEL_CONFIGS[key];
-                        const isSelected = selectedModel === key;
-                        const isFocused = focusedModelIndex === index;
-                        return (
-                          <button
-                            key={key}
-                            role="option"
-                            aria-selected={isSelected}
-                            tabIndex={isFocused ? 0 : -1}
-                            onClick={() => handleModelSelect(key)}
-                            className={cn(
-                              "w-full p-3 text-left rounded-xl transition-colors focus:outline-none",
-                              "hover:bg-white/[0.05]",
-                              isSelected && "bg-blue-700/90 hover:bg-blue-700",
-                              isFocused && (isSelected ? "ring-2 ring-inset ring-white/50" : "bg-white/[0.08] ring-2 ring-inset ring-blue-500/70")
-                            )}
-                            ref={el => { if (isFocused && el) setTimeout(() => el.focus(), 0); }}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className={cn("text-sm font-medium", isSelected ? "text-white" : "text-zinc-200")}>{config.name}</span>
-                              {isSelected && <Check className="w-4 h-4 text-white" />}
-                            </div>
-                            <p className={cn("text-xs font-normal", isSelected ? "text-blue-200" : "text-zinc-500")}>{config.description}</p>
-                          </button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Snippets Toggle */}
-              <button
-                onClick={handleToggleCodeSnippets}
-                className={cn(
-                  "relative p-2.5 bg-transparent hover:bg-white/[0.05] rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-                  showCodeSnippets ? "text-blue-400 bg-blue-600/20 hover:bg-blue-600/30" : "text-zinc-400 hover:text-white"
-                )}
-                title="Code snippets"
-                aria-label={`Toggle Code Snippets (${snippets.length})`}
-              >
-                <Code2 className="w-4 h-4" />
-                {snippets.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
-                    {snippets.length}
-                  </span>
-                )}
-              </button>
-
-              {/* Desktop Overflow Menu */}
-              <div className="relative" ref={desktopMenuRef}>
-                <button
-                  onClick={() => setShowDesktopMenu(!showDesktopMenu)}
-                  className="p-2.5 text-zinc-400 hover:text-white bg-transparent hover:bg-white/[0.05] rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  aria-label="More options"
-                  title="More options"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-
-                <AnimatePresence>
-                  {showDesktopMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      transition={{ duration: 0.1, ease: 'easeOut' }}
-                      className="absolute right-0 top-full mt-2 w-56 p-2 bg-zinc-800/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-xl z-50"
-                      role="menu"
-                    >
-                      {contextEnabled && (
-                        <button
-                          role="menuitem"
-                          onClick={() => { setShowDesktopMenu(false); setShowContextEditor(true); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 rounded-xl transition-colors focus:outline-none focus-visible:bg-white/10"
-                        >
-                          <Settings className="w-4 h-4" />
-                          Global Context {context?.is_active && <span className="ml-auto w-2 h-2 bg-blue-500 rounded-full" />}
-                        </button>
-                      )}
-                      {exportEnabled && (
-                        <button
-                          role="menuitem"
-                          onClick={() => { setShowDesktopMenu(false); handleExport('markdown'); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 rounded-xl transition-colors disabled:opacity-50 focus:outline-none focus-visible:bg-white/10"
-                          disabled={isSending || messages.length === 0}
-                        >
-                          <Download className="w-4 h-4" />
-                          Export (Markdown)
-                        </button>
-                      )}
-                      <div className="my-2 border-t border-white/5" />
+      <div className="flex-1 flex flex-col relative z-0" role="main">
+        {/* --- Header (Floating Glass) --- */}
+        <header className="absolute top-0 left-0 right-0 z-20 px-4 pt-4 pb-2 pointer-events-none">
+          <div className="max-w-5xl mx-auto w-full pointer-events-auto">
+            <div className="bg-zinc-900/70 backdrop-blur-xl border border-white/10 rounded-2xl shadow-glass-sm flex items-center justify-between h-14 px-4 transition-all duration-300 hover:bg-zinc-900/80">
+              {/* Left: Title */}
+              <div className="flex items-center gap-4 min-w-0 flex-1">
+                {isEditingTitle ? (
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    onKeyDown={handleTitleKeyDown}
+                    onBlur={handleTitleSave}
+                    className="px-3 py-1.5 bg-zinc-800/50 text-zinc-100 text-sm font-medium rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500/70 transition-shadow w-full max-w-md"
+                    maxLength={100}
+                    aria-label="Edit session title"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <h1 className="text-sm font-medium text-zinc-200 truncate" title={sessionName || 'New Session'}>{sessionName || 'New Session'}</h1>
+                    {onUpdateSessionName && sessionId && (
                       <button
-                        role="menuitem"
-                        onClick={() => { setShowDesktopMenu(false); clearMessages(); }}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 rounded-xl transition-colors disabled:opacity-50 focus:outline-none focus-visible:bg-white/10"
-                        disabled={isSending || isUploading || messages.length === 0 || isLoadingHistory}
+                        onClick={handleTitleEdit}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        title="Edit title"
+                        aria-label="Edit session title"
+                        disabled={isSending || isUploading || isLocalProcessing}
                       >
-                        <RefreshCw className="w-4 h-4" />
-                        Clear Messages
+                        <Edit2 className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
                       </button>
-                      {onDeleteSession && sessionId && (
-                        <button
-                          role="menuitem"
-                          onClick={handleDeleteSession}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 rounded-xl transition-colors disabled:opacity-50 focus:outline-none focus-visible:bg-red-500/15"
-                          disabled={isSending || isUploading || isLoadingHistory}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete Session
-                        </button>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
 
-          {/* Mobile Header */}
-          <div className="md:hidden flex items-center justify-between px-3 py-2 ios-safe-top">
-            <div className="flex-1 min-w-0 mr-2">
-              <SpaceSelector
-                userId={userId}
-                selectedSpaceId={selectedSpaceId}
-                onSelectSpace={setSelectedSpaceId}
-                onCreateSpace={() => { setEditingSpaceId(null); setShowSpaceSettings(true); }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative" ref={dropdownRef} onKeyDown={handleDropdownKeyDown}>
-                <button
-                  ref={modelButtonRef}
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-zinc-300 bg-zinc-800 rounded-xl touch-target focus:outline-none"
-                  disabled={isSending || isUploading}
-                >
-                  <span className="truncate max-w-[80px]">{currentModelConfig.name.split(' ')[0]}</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${showModelDropdown ? 'rotate-180' : ''}`} />
-                </button>
-                <AnimatePresence>
-                  {showModelDropdown && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.1 }}
-                      className="absolute right-0 top-full mt-2 w-64 p-3 bg-zinc-800/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-50"
-                    >
-                      {modelKeys.map((key, index) => (
-                        <button
-                          key={key} role="option" aria-selected={selectedModel === key} tabIndex={focusedModelIndex === index ? 0 : -1}
-                          onClick={() => handleModelSelect(key)}
-                          className={cn("w-full p-3 text-left rounded-xl transition-colors focus:outline-none hover:bg-white/[0.05]", selectedModel === key && "bg-blue-600/90 hover:bg-blue-600")}
-                        >
-                          <div className="flex items-center justify-between mb-1"><span className={cn("text-sm font-medium", selectedModel === key ? "text-white" : "text-zinc-200")}>{MODEL_CONFIGS[key].name}</span></div>
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+              {/* Center: Space Selector (Desktop) */}
+              <div className='hidden md:block absolute left-1/2 transform -translate-x-1/2 max-w-xs w-full'>
+                <div className="flex justify-center">
+                  <SpaceSelector
+                    userId={userId}
+                    selectedSpaceId={selectedSpaceId}
+                    onSelectSpace={setSelectedSpaceId}
+                    onCreateSpace={() => {
+                      setEditingSpaceId(null);
+                      setShowSpaceSettings(true);
+                    }}
+                  />
+                </div>
               </div>
-              <div className="relative" ref={mobileMenuRef}>
-                <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="p-2.5 text-zinc-400 bg-zinc-800 rounded-xl touch-target">
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-                <AnimatePresence>
-                  {showMobileMenu && (
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 top-full mt-2 w-56 p-2 bg-zinc-800/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-50">
-                      {contextEnabled && <button onClick={() => { setShowMobileMenu(false); setShowContextEditor(true); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 rounded-xl"><Settings className="w-4 h-4" /> Context</button>}
-                      <button onClick={() => { setShowMobileMenu(false); handleToggleCodeSnippets(); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 rounded-xl"><Code2 className="w-4 h-4" /> Snippets</button>
-                      <div className="my-2 border-t border-white/5" />
-                      <button onClick={() => { setShowMobileMenu(false); clearMessages(); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 rounded-xl"><RefreshCw className="w-4 h-4" /> Clear</button>
-                    </motion.div>
+
+              {/* Right: Controls */}
+              <div className="flex items-center gap-2 flex-1 justify-end">
+                {/* Model Selector */}
+                <div className="relative" ref={dropdownRef} onKeyDown={handleDropdownKeyDown}>
+                  <button
+                    ref={modelButtonRef}
+                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.05] rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group"
+                    disabled={isSending || isUploading}
+                    aria-haspopup="listbox"
+                    aria-expanded={showModelDropdown}
+                  >
+                    {selectedModel === 'auto' && activeModelConfig ? (
+                      <span className='flex items-center gap-1.5' title={`Auto-routed to ${activeModelConfig.name}`}>
+                        <Zap className="w-3 h-3 text-yellow-500/80 group-hover:text-yellow-500 transition-colors" />
+                        <span className='text-zinc-400 group-hover:text-white hidden sm:inline'>{activeModelConfig.name}</span>
+                      </span>
+                    ) : (
+                      <span className="hidden sm:inline">{currentModelConfig.name}</span>
+                    )}
+                    <span className="sm:hidden">{currentModelConfig.name.split(' ')[0]}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${showModelDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {showModelDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 4 }}
+                        transition={{ duration: 0.1, ease: 'easeOut' }}
+                        className="absolute right-0 top-full mt-2 w-64 p-2 bg-zinc-900/95 backdrop-blur-2xl border border-white/10 rounded-xl shadow-xl z-50"
+                        role="listbox"
+                      >
+                        {modelKeys.map((key, index) => {
+                          const config = MODEL_CONFIGS[key];
+                          const isSelected = selectedModel === key;
+                          const isFocused = focusedModelIndex === index;
+                          return (
+                            <button
+                              key={key}
+                              role="option"
+                              aria-selected={isSelected}
+                              tabIndex={isFocused ? 0 : -1}
+                              onClick={() => handleModelSelect(key)}
+                              className={cn(
+                                "w-full p-2 text-left rounded-lg transition-colors focus:outline-none mb-1 last:mb-0",
+                                "hover:bg-white/[0.05]",
+                                isSelected && "bg-blue-600/20 text-blue-200",
+                                isFocused && (isSelected ? "ring-1 ring-inset ring-blue-400/50" : "bg-white/[0.08]")
+                              )}
+                              ref={el => { if (isFocused && el) setTimeout(() => el.focus(), 0); }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className={cn("text-sm font-medium", isSelected ? "text-blue-100" : "text-zinc-300")}>{config.name}</span>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                              </div>
+                              <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{config.description}</p>
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Snippets Toggle */}
+                <button
+                  onClick={handleToggleCodeSnippets}
+                  className={cn(
+                    "relative p-2 bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.05] rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                    showCodeSnippets ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : "text-zinc-400 hover:text-white"
                   )}
-                </AnimatePresence>
+                  title="Code snippets"
+                >
+                  <Code2 className="w-4 h-4" />
+                  {snippets.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center shadow-sm">
+                      {snippets.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Desktop Overflow Menu */}
+                <div className="relative" ref={desktopMenuRef}>
+                  <button
+                    onClick={() => setShowDesktopMenu(!showDesktopMenu)}
+                    className="p-2 text-zinc-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.05] rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+
+                  <AnimatePresence>
+                    {showDesktopMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 4 }}
+                        transition={{ duration: 0.1, ease: 'easeOut' }}
+                        className="absolute right-0 top-full mt-2 w-48 p-1.5 bg-zinc-900/95 backdrop-blur-2xl border border-white/10 rounded-xl shadow-xl z-50"
+                      >
+                        {contextEnabled && (
+                          <button
+                            onClick={() => { setShowDesktopMenu(false); setShowContextEditor(true); }}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                          >
+                            <Settings className="w-3.5 h-3.5" />
+                            Global Context {context?.is_active && <span className="ml-auto w-1.5 h-1.5 bg-blue-500 rounded-full" />}
+                          </button>
+                        )}
+                        {exportEnabled && (
+                          <button
+                            onClick={() => { setShowDesktopMenu(false); handleExport('markdown'); }}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
+                            disabled={isSending || messages.length === 0}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Export Chat
+                          </button>
+                        )}
+                        <div className="my-1 border-t border-white/5" />
+                        <button
+                          onClick={() => { setShowDesktopMenu(false); clearMessages(); }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
+                          disabled={isSending || isUploading || messages.length === 0 || isLoadingHistory}
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Clear Chat
+                        </button>
+                        {onDeleteSession && sessionId && (
+                          <button
+                            onClick={handleDeleteSession}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete Session
+                          </button>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
           </div>
         </header>
 
-        {/* Context Banner */}
+        {/* Context Banner (Centered) */}
         {contextEnabled && context?.is_active && context.context_content && (
-          <ContextBanner
-            content={context.context_content}
-            characterCount={context.character_count || 0}
-            tokenEstimate={context.token_estimate || 0}
-            onEdit={() => setShowContextEditor(true)}
-            onToggle={toggleActive}
-            syncing={contextSyncing}
-          />
+          <div className="absolute top-20 left-0 right-0 z-10 flex justify-center pointer-events-none">
+            <div className="pointer-events-auto max-w-5xl w-full px-4">
+              <ContextBanner
+                content={context.context_content}
+                characterCount={context.character_count || 0}
+                tokenEstimate={context.token_estimate || 0}
+                onEdit={() => setShowContextEditor(true)}
+                onToggle={toggleActive}
+                syncing={contextSyncing}
+              />
+            </div>
+          </div>
         )}
 
         {/* --- Messages Area --- */}
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative pt-20">
           <div
-            className="h-full overflow-y-auto custom-scrollbar"
+            className="h-full overflow-y-auto custom-scrollbar px-4"
             ref={messagesWrapperRef}
             aria-live="polite"
             role="log"
             tabIndex={messages.length > 0 ? 0 : -1}
           >
-            {isLoadingHistory ? (
-              <LoadingFallback />
-            ) : (
-              <>
-                {/* Display Empty State only if no messages AND no search results yet */}
-                {messages.length === 0 && !searchResults ? (
-                  renderEmptyState()
-                ) : (
-                  <>
-                    {/* Search Results Display (Displayed immediately when available) */}
-                    {searchResults && (
-                      <div className="px-4 md:px-6 lg:px-8 pt-4">
-                        <SearchResults
-                          results={searchResults.references}
-                          metadata={searchResults.metadata}
-                          className="max-w-4xl mx-auto"
-                        />
-                      </div>
-                    )}
-
-                    <MessageList
-                      messages={messages}
-                      isStreaming={isSending}
-                      onImageClick={handleImageClick}
-                    />
-
-                    {/* *** ENHANCED: Unified Processing Indicator *** */}
-                    <AnimatePresence>
-                      {processingDetails && (
-                        <ProcessingIndicator
-                          {...processingDetails}
-                        />
+            <div className="max-w-5xl mx-auto w-full min-h-full flex flex-col">
+              {isLoadingHistory ? (
+                <LoadingFallback />
+              ) : (
+                <>
+                  {/* Display Empty State only if no messages AND no search results yet */}
+                  {messages.length === 0 && !searchResults ? (
+                    renderEmptyState()
+                  ) : (
+                    <>
+                      {/* Search Results Display (Displayed immediately when available) */}
+                      {searchResults && (
+                        <div className="pt-4 mb-6">
+                          <SearchResults
+                            results={searchResults.references}
+                            metadata={searchResults.metadata}
+                            className="max-w-4xl mx-auto"
+                          />
+                        </div>
                       )}
-                    </AnimatePresence>
-                  </>
-                )}
-              </>
-            )}
-            <div ref={messagesEndRef} />
+
+                      <MessageList
+                        messages={messages}
+                        isStreaming={isSending}
+                        onImageClick={handleImageClick}
+                      />
+
+                      {/* *** ENHANCED: Unified Processing Indicator *** */}
+                      <AnimatePresence>
+                        {processingDetails && (
+                          <ProcessingIndicator
+                            {...processingDetails}
+                          />
+                        )}
+                      </AnimatePresence>
+                    </>
+                  )}
+                </>
+              )}
+              <div ref={messagesEndRef} className="h-4" />
+            </div>
           </div>
 
           <AnimatePresence>
@@ -1482,40 +1422,47 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
 
         {/* --- Input Area --- */}
-        <div className="ios-safe-bottom border-t border-white/[0.05] bg-zinc-950">
-          {(attachedFiles.length > 0 || imageAttachments.length > 0) && (
-            <FileUploadPreview
-              localFiles={attachedFiles}
-              imageAttachments={imageAttachments}
-              onRemoveFileById={handleRemoveFile}
-              onRemoveImageById={handleRemoveImage}
-              onClear={handleClearAttachments}
-              onRetryUpload={handleRetryUpload}
+        <div className="ios-safe-bottom bg-zinc-950/0 pointer-events-none">
+          <div className="max-w-5xl mx-auto w-full px-4 pb-4 pointer-events-auto">
+            {/* File Preview Container */}
+            {(attachedFiles.length > 0 || imageAttachments.length > 0) && (
+              <div className="mb-2">
+                <FileUploadPreview
+                  localFiles={attachedFiles}
+                  imageAttachments={imageAttachments}
+                  onRemoveFileById={handleRemoveFile}
+                  onRemoveImageById={handleRemoveImage}
+                  onClear={handleClearAttachments}
+                  onRetryUpload={handleRetryUpload}
+                />
+              </div>
+            )}
+
+            <ChatInputArea
+              onSend={handleSendMessage}
+              onFileSelect={handleFileSelect}
+              onImageSelect={handleImageSelect}
+              isStreaming={isSending || isLocalProcessing}
+              disabled={isSending || isLoadingHistory || isUploading || isLocalProcessing}
+              hasAttachedFiles={attachedFiles.length > 0}
+              hasAttachedImages={imageAttachments.length > 0}
+              onStorageClick={handleStorageClick}
+              storageButtonRef={storageButtonRef}
+              onScrollToBottom={undefined}
+              onError={message => toast.error(message)}
+              searchEnabled={searchMode !== 'off'}
+              onSearchToggle={handleSearchToggle}
             />
-          )}
-          <ChatInputArea
-            onSend={handleSendMessage}
-            onFileSelect={handleFileSelect}
-            onImageSelect={handleImageSelect}
-            isStreaming={isSending || isLocalProcessing}
-            disabled={isSending || isLoadingHistory || isUploading || isLocalProcessing}
-            hasAttachedFiles={attachedFiles.length > 0}
-            hasAttachedImages={imageAttachments.length > 0}
-            onStorageClick={handleStorageClick}
-            storageButtonRef={storageButtonRef}
-            onScrollToBottom={undefined}
-            onError={message => toast.error(message)}
-            searchEnabled={searchMode !== 'off'}
-            onSearchToggle={handleSearchToggle}
-          />
+          </div>
         </div>
 
         {/* Global Error Display */}
         {error && !isLoadingHistory && (
-          <div className="mx-4 mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-xl flex items-start gap-3" role="alert">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            {/* Displaying the error message from the hook, which captures Supabase/API errors */}
-            <span className="text-sm text-red-300">Connection Error: {error.message}</span>
+          <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full px-4">
+            <div className="p-3 bg-red-500/10 backdrop-blur-md border border-red-500/20 rounded-xl flex items-center gap-3 shadow-lg" role="alert">
+              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <span className="text-sm text-red-200 font-medium">Connection Error: {error.message}</span>
+            </div>
           </div>
         )}
       </div>
