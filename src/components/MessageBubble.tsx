@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { type Components } from 'react-markdown';
-
 // Assuming these imports are correct based on the original code
 import { CodeBlock } from './CodeBlock';
 import { HTMLPreview } from './HTMLPreview';
@@ -17,7 +16,6 @@ import { SearchResults } from './SearchResults';
 import { detectSnippets, PreviewGroup, describePreviewGroup } from '../utils/htmlDetector';
 import { combineHtml } from '../utils/htmlCombiner';
 import yaml from 'js-yaml';
-
 interface MessageBubbleProps {
   // Added timestamp assumption for metadata display
   message: ChatMessage & { timestamp?: number };
@@ -27,9 +25,7 @@ interface MessageBubbleProps {
   // Unified retry/regenerate handler
   onRetry?: (messageId: string) => void;
 }
-
 // --- Refined Sub-components & Helpers ---
-
 // 1. Refined Streaming Cursor: Thinner, smoother "breathing" pulse.
 const StreamingCursor = React.memo(() => (
   <motion.span
@@ -40,7 +36,6 @@ const StreamingCursor = React.memo(() => (
   />
 ));
 StreamingCursor.displayName = 'StreamingCursor';
-
 // 2. Refined Typing Indicator (Used when streaming but no content yet)
 const TypingIndicator = React.memo(() => (
   <div className="flex items-center gap-1.5 py-1 px-1">
@@ -50,13 +45,10 @@ const TypingIndicator = React.memo(() => (
   </div>
 ));
 TypingIndicator.displayName = 'TypingIndicator';
-
-
 // 3. HTML Preview Wrapper with enhanced container and header
 interface HTMLPreviewWrapperProps {
   group: PreviewGroup;
 }
-
 const HTMLPreviewWrapper = React.memo(({ group }: HTMLPreviewWrapperProps) => {
   const combinedHtml = useMemo(() => {
     if (!group) return '';
@@ -66,11 +58,8 @@ const HTMLPreviewWrapper = React.memo(({ group }: HTMLPreviewWrapperProps) => {
       js: group.js || ''
     });
   }, [group]);
-
   const title = useMemo(() => describePreviewGroup(group), [group]);
-
   if (!combinedHtml) return null;
-
   // Refined styling: Stronger shadow, subtle border, distinct header.
   return (
     // Added subtle entry animation
@@ -90,7 +79,6 @@ const HTMLPreviewWrapper = React.memo(({ group }: HTMLPreviewWrapperProps) => {
   );
 });
 HTMLPreviewWrapper.displayName = 'HTMLPreviewWrapper';
-
 // 4. ActionButton Helper (Encapsulates micro-interactions and styling)
 interface ActionButtonProps {
   onClick: () => void;
@@ -98,7 +86,6 @@ interface ActionButtonProps {
   children: React.ReactNode;
   disabled?: boolean;
 }
-
 const ActionButton = memo(({ onClick, label, children, disabled = false }: ActionButtonProps) => (
   <motion.button
     onClick={onClick}
@@ -113,13 +100,11 @@ const ActionButton = memo(({ onClick, label, children, disabled = false }: Actio
   </motion.button>
 ));
 ActionButton.displayName = 'ActionButton';
-
 // 5. MessageMetadata (Timestamps)
 const MessageMetadata = memo(({ timestamp }: { timestamp: number }) => {
   const date = new Date(timestamp);
   // e.g., "8:28 PM"
   const timeString = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-
   return (
     <div className="text-[10px] font-medium text-zinc-500 mt-1 px-1">
       <span>{timeString}</span>
@@ -127,10 +112,7 @@ const MessageMetadata = memo(({ timestamp }: { timestamp: number }) => {
   );
 });
 MessageMetadata.displayName = 'MessageMetadata';
-
-
 // --- Main MessageBubble Component ---
-
 export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   message,
   isLatest,
@@ -144,18 +126,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   // Manage visibility of actions via state for accessibility (keyboard focus) and interaction stability
   const [showActions, setShowActions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   // State definitions
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isMessageStreaming = isStreaming && isLatest && message.role === 'assistant' && !isError;
-
   // Permissions
   const canEdit = isUser && !!onEditMessage && !isStreaming && !isError;
   // Retry is available if handler exists, not streaming, and either it's an error OR it's the latest assistant message (for regeneration)
   const canRetry = !!onRetry && !isStreaming && (isError || (isLatest && !isUser));
   const canCopy = !!message.content && !isError && !isUser;
-
   // Detect HTML preview groups
   const previewGroups = useMemo(() => {
     // Do not process previews if the message is from the user or if there is an error.
@@ -169,7 +148,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       return [];
     }
   }, [message.content, isUser, isError]);
-
   // Robust Auto-resize textarea implementation
   useEffect(() => {
     if (isEditing && textareaRef.current) {
@@ -182,9 +160,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       textarea.style.height = `${Math.min(scrollHeight, 400)}px`; // Constrained max height
     }
   }, [isEditing, editContent]);
-
   // --- Handlers ---
-
   const handleStartEdit = useCallback(() => {
     if (canEdit) {
       setEditContent(message.content);
@@ -192,12 +168,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       setShowActions(false); // Hide actions when editing starts
     }
   }, [canEdit, message.content]);
-
   const handleCancelEdit = useCallback(() => {
     setIsEditing(false);
     setEditContent(message.content);
   }, [message.content]);
-
   const handleSaveEdit = useCallback(() => {
     const trimmedContent = editContent.trim();
     if (trimmedContent && trimmedContent !== message.content) {
@@ -205,13 +179,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     }
     setIsEditing(false);
   }, [editContent, message.id, message.content, onEditMessage]);
-
   const handleRetry = useCallback(() => {
     if (canRetry) {
       onRetry?.(message.id);
     }
   }, [canRetry, onRetry, message.id]);
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Ensure only Enter (without modifiers) triggers save
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
@@ -222,7 +194,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       handleCancelEdit();
     }
   };
-
   const handleCopyMessage = useCallback(() => {
     if (!canCopy) return;
     // Use modern async clipboard API if available
@@ -236,22 +207,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       });
     }
   }, [message.content, canCopy]);
-
   // --- Markdown Configuration ---
-
   // Markdown components configuration (Memoized for performance)
   const markdownComponents: Components = useMemo(() => ({
     code({ node, inline, className, children, ...props }) {
       const match = /language-(\w+)/.exec(className || '');
       const language = match ? match[1] : '';
       const codeString = String(children).replace(/\n$/, '');
-
       if (!inline && language) {
         // 1. Handle specialized renderers (Mermaid, OpenAPI)
         if (language === 'mermaid') {
           return <DiagramBlock code={codeString} />;
         }
-
         if ((language === 'yaml' || language === 'yml') && (codeString.includes('openapi:') || codeString.includes('swagger:'))) {
           try {
             const spec = yaml.load(codeString);
@@ -263,7 +230,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             // Fall through to regular code block if parsing fails
           }
         }
-
         // 2. Check if this code block should be hidden because it's rendered in a PreviewGroup.
         // Use precise matching for robustness.
         const isInPreviewGroup = previewGroups.some(group =>
@@ -271,11 +237,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           group.css === codeString ||
           group.js === codeString
         );
-
         if (isInPreviewGroup) {
           return null;
         }
-
         // 3. Standard Code Block
         return (
           <CodeBlock
@@ -286,7 +250,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           />
         );
       }
-
       // Inline code styling - refined for better readability and aesthetics
       return (
         <code className="px-1.5 py-0.5 bg-white/10 rounded-md text-sm font-mono font-medium text-zinc-200 border border-white/5" {...props}>
@@ -296,7 +259,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     },
     // Ensure links open securely (Styling handled by Prose below)
     a: ({ node, children, ...props }) => <a target="_blank" rel="noopener noreferrer" {...props}>{children}</a>,
-
     // Ensure tables look good within the glass aesthetic (Overrides Prose styles)
     table: ({ children, ...props }) => <div className="overflow-x-auto my-4 rounded-lg border border-white/10"><table className="w-full text-left text-sm" {...props}>{children}</table></div>,
     th: ({ children, ...props }) => <th className="px-4 py-2 font-semibold text-zinc-300 bg-white/5" {...props}>{children}</th>,
@@ -304,12 +266,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     // Subtle hover effect on rows
     tr: ({ children, ...props }) => <tr className="hover:bg-white/5 transition-colors duration-150" {...props}>{children}</tr>
   }), [previewGroups, isMessageStreaming]);
-
   // --- Styling ---
-
   // Refined bubble styling.
   let bubbleClasses = 'relative overflow-hidden rounded-2xl px-5 py-3.5 text-[15px] leading-relaxed transition-all duration-300 antialiased max-w-full';
-
   if (isUser) {
     // User: Minimalist dark gray/black with subtle border
     bubbleClasses += ' bg-zinc-800 text-zinc-100 border border-white/5';
@@ -320,15 +279,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     // Assistant: Transparent/Glass
     bubbleClasses += ' bg-transparent text-zinc-300';
   }
-
   // Animation variants for the bubble entry
   const bubbleVariants = {
     hidden: { opacity: 0, scale: 0.98, y: 5 },
     visible: { opacity: 1, scale: 1, y: 0 },
   };
-
   // --- Render Logic ---
-
   // 1. Render Editing Interface
   if (isEditing) {
     return (
@@ -370,13 +326,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       </div>
     );
   }
-
   // 2. Main Render (User or Assistant)
-
   // Determine if actions should be visible (hover, focus, recently copied, or persistent error state).
   // Actions are hidden during streaming unless it's an error state that allows retry.
   const shouldShowActions = (showActions || copied || isError) && (!isMessageStreaming || (isError && canRetry));
-
   return (
     // Container for the bubble, actions, and metadata. Manages hover/focus state for accessibility.
     <div
@@ -407,7 +360,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             <span>An error occurred. {message.content}</span>
           </div>
         )}
-
         {/* Content Rendering */}
         {!isError && (
           isUser ? (
@@ -428,7 +380,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
               {previewGroups.length > 0 && previewGroups.map((group, idx) => (
                 <HTMLPreviewWrapper key={`preview-${message.id}-${idx}`} group={group} />
               ))}
-
               {/* Assistant: Render markdown content */}
               {message.content ? (
                 // Use Tailwind Prose for typography control. Customized for dark/glass background.
@@ -459,8 +410,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           )
         )}
       </motion.div>
-
-
       {/* Image Attachments - Displayed outside bubble for better presentation */}
       {message.files && message.files.length > 0 && (
         <ImageGrid
@@ -477,7 +426,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       )}
       {/* Footer: Action Bar and Metadata (Intelligent switching) */}
       <div className={`flex items-center gap-2 mt-1 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-
         {/* Action Buttons (Appear below the bubble on hover/focus) */}
         <AnimatePresence>
           {shouldShowActions && (
@@ -521,14 +469,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
                   </AnimatePresence>
                 </ActionButton>
               )}
-
               {/* Edit Button */}
               {canEdit && (
                 <ActionButton onClick={handleStartEdit} label="Edit">
                   <Edit2 className="w-3.5 h-3.5" />
                 </ActionButton>
               )}
-
               {/* Retry/Regenerate Button */}
               {canRetry && (
                 <ActionButton onClick={handleRetry} label={isError ? "Retry" : "Regenerate"}>
@@ -538,7 +484,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             </motion.div>
           )}
         </AnimatePresence>
-
         {/* Metadata (Subtly visible when actions are not shown) */}
         <AnimatePresence>
           {!shouldShowActions && message.timestamp && (
@@ -553,9 +498,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           )}
         </AnimatePresence>
       </div>
-
     </div>
   );
 });
-
 MessageBubble.displayName = 'MessageBubble';
