@@ -135,7 +135,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`[Search Request] User: ${user.id}, Query: "${query.substring(0, 50)}...", Model: ${model}, Trigger: ${trigger_source}`);
+    console.log(`[SEARCH-DEBUG] ========== NEW SEARCH REQUEST ==========`);
+    console.log(`[SEARCH-DEBUG] User ID: ${user.id}`);
+    console.log(`[SEARCH-DEBUG] Query: "${query}"`);
+    console.log(`[SEARCH-DEBUG] Model: ${model}`);
+    console.log(`[SEARCH-DEBUG] Trigger: ${trigger_source}`);
+    console.log(`[SEARCH-DEBUG] Max Results: ${max_results}`);
+    console.log(`[SEARCH-DEBUG] Context Size: ${search_context_size}`);
+    console.log(`[SEARCH-DEBUG] Published After: ${published_after || 'none'}`);
+    console.log(`[SEARCH-DEBUG] Domain Filter: ${search_domain_filter || 'none'}`);
 
     const supabaseAdmin = createClient(
       supabaseUrl,
@@ -216,7 +224,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`[Cache Miss] Calling Perplexity API...`);
+    console.log(`[SEARCH-DEBUG] Cache Miss - Query Hash: ${queryHash}`);
+    console.log(`[SEARCH-DEBUG] Calling Perplexity API...`);
 
     const messages = [{
       role: 'system',
@@ -230,6 +239,8 @@ Deno.serve(async (req: Request) => {
       model: model === 'sonar-pro' ? 'sonar-pro' : 'sonar',
       messages
     };
+
+    console.log(`[SEARCH-DEBUG] Perplexity Payload:`, JSON.stringify(perplexityPayload, null, 2));
 
     const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -248,6 +259,12 @@ Deno.serve(async (req: Request) => {
 
     const perplexityData: PerplexityResponse = await perplexityResponse.json();
 
+    console.log(`[SEARCH-DEBUG] ========== PERPLEXITY RAW RESPONSE ==========`);
+    console.log(`[SEARCH-DEBUG] Status: ${perplexityResponse.status}`);
+    console.log(`[SEARCH-DEBUG] Response Data:`, JSON.stringify(perplexityData, null, 2));
+    console.log(`[SEARCH-DEBUG] Citations count: ${perplexityData.citations?.length || 0}`);
+    console.log(`[SEARCH-DEBUG] Content length: ${perplexityData.choices[0]?.message?.content?.length || 0}`);
+
     const inputTokens = perplexityData.usage?.prompt_tokens || 0;
     const outputTokens = perplexityData.usage?.completion_tokens || 0;
     const actualCost = calculateCost(model, inputTokens, outputTokens);
@@ -255,6 +272,10 @@ Deno.serve(async (req: Request) => {
 
     const searchSummary = perplexityData.choices[0]?.message?.content || '';
     const citations = perplexityData.citations || [];
+
+    console.log(`[SEARCH-DEBUG] ========== PROCESSING RESULTS ==========`);
+    console.log(`[SEARCH-DEBUG] Search Summary:`, searchSummary.substring(0, 200));
+    console.log(`[SEARCH-DEBUG] Citations:`, JSON.stringify(citations, null, 2));
 
     const references = citations.slice(0, max_results).map((citation, index) => ({
       url: citation.url,
@@ -337,6 +358,11 @@ Deno.serve(async (req: Request) => {
         expires_at: expiresAt.toISOString(),
         hit_count: 0
       });
+
+    console.log(`[SEARCH-DEBUG] ========== FINAL RESPONSE ==========`);
+    console.log(`[SEARCH-DEBUG] Response Payload:`, JSON.stringify(responsePayload, null, 2));
+    console.log(`[SEARCH-DEBUG] Total Latency: ${latency}ms`);
+    console.log(`[SEARCH-DEBUG] Cost: $${actualCost.toFixed(4)}`);
 
     return new Response(
       JSON.stringify(responsePayload),

@@ -34,6 +34,10 @@ export class SearchService {
     options?.onProgress?.('Checking quota...');
 
     try {
+      console.log('[SEARCH-CLIENT-DEBUG] ========== INITIATING SEARCH ==========');
+      console.log('[SEARCH-CLIENT-DEBUG] Request payload:', JSON.stringify(request, null, 2));
+      console.log('[SEARCH-CLIENT-DEBUG] URL:', SEARCH_FUNCTION_URL);
+
       options?.onProgress?.('Searching the web...');
 
       const response = await fetch(SEARCH_FUNCTION_URL, {
@@ -47,8 +51,18 @@ export class SearchService {
         signal: options?.signal,
       });
 
+      console.log('[SEARCH-CLIENT-DEBUG] Response status:', response.status);
+      console.log('[SEARCH-CLIENT-DEBUG] Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorText = await response.text();
+        console.error('[SEARCH-CLIENT-DEBUG] Error response body:', errorText);
+        let errorData = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          console.error('[SEARCH-CLIENT-DEBUG] Failed to parse error JSON:', e);
+        }
 
         if (response.status === 429) {
           throw new Error(`Quota exceeded: ${errorData.message || 'Search limit reached'}`);
@@ -63,7 +77,15 @@ export class SearchService {
 
       options?.onProgress?.('Processing results...');
 
-      const data: PerplexitySearchResponse = await response.json();
+      const responseText = await response.text();
+      console.log('[SEARCH-CLIENT-DEBUG] ========== RAW RESPONSE ==========');
+      console.log('[SEARCH-CLIENT-DEBUG] Response body:', responseText);
+
+      const data: PerplexitySearchResponse = JSON.parse(responseText);
+      console.log('[SEARCH-CLIENT-DEBUG] ========== PARSED DATA ==========');
+      console.log('[SEARCH-CLIENT-DEBUG] Search summary length:', data.search_summary?.length || 0);
+      console.log('[SEARCH-CLIENT-DEBUG] References count:', data.references?.length || 0);
+      console.log('[SEARCH-CLIENT-DEBUG] Metadata:', data.metadata);
 
       return data;
     } catch (error) {
