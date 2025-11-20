@@ -559,4 +559,3 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 });
 
 MessageBubble.displayName = 'MessageBubble';
-```
