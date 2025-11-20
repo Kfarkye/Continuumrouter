@@ -236,15 +236,15 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   // Dynamic height adjustment
   const adjustHeight = (element: HTMLTextAreaElement) => {
     element.style.height = 'auto';
-    
+
     // Calculate max height as 60% of viewport height (60vh)
     const maxHeight = window.innerHeight * 0.6;
-    
+
     const newHeight = Math.max(
       MIN_TEXTAREA_HEIGHT,
       Math.min(element.scrollHeight, maxHeight)
     );
-    
+
     element.style.height = `${newHeight}px`;
   };
 
@@ -304,12 +304,12 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
       <div className="max-w-4xl mx-auto relative">
         {/* Error Toast */}
         {validationError && (
-          <div className="absolute -top-14 left-0 right-0 mx-auto w-max max-w-[90%] z-50">
-            <div className="px-4 py-2 bg-red-500/90 text-white text-sm font-medium rounded-full shadow-xl backdrop-blur-md flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+          <div className="absolute -top-16 left-0 right-0 mx-auto w-max max-w-[90%] z-50">
+            <div className="px-4 py-2.5 bg-red-500/10 text-red-200 text-sm font-medium rounded-full shadow-glass border border-red-500/20 backdrop-blur-md flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
               <AlertCircle className="w-4 h-4" />
               <span>{validationError}</span>
-              <button onClick={() => setValidationError(null)} className="ml-2 hover:text-white/80">
-                <X className="w-3 h-3" />
+              <button onClick={() => setValidationError(null)} className="ml-2 hover:text-white transition-colors">
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -318,14 +318,14 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
         {/* Main Input Container */}
         <div
           className={cn(
-            "relative flex flex-col transition-all duration-300 ease-out",
-            "rounded-[26px]", // Apple-style super-ellipse feel
-            "bg-[#1c1c1e]/80 backdrop-blur-xl", // Deep frosted glass
-            "border border-white/[0.08]",
-            "shadow-[0_4px_24px_-1px_rgba(0,0,0,0.2)]", // Deep shadow
-            isFocused && "border-white/20 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.3)] bg-[#1c1c1e]/90 ring-1 ring-white/10",
-            isDragging && "border-blue-500/50 bg-blue-500/10 ring-4 ring-blue-500/20",
-            disabled && "opacity-60 grayscale"
+            "relative flex flex-col transition-all duration-300 ease-apple",
+            "rounded-[24px]", // Consistent 24px radius
+            "bg-zinc-900/60 backdrop-blur-xl", // Lighter, more transparent base
+            "border border-white/10",
+            "shadow-glass-sm", // Subtle shadow
+            isFocused && "bg-zinc-900/80 border-white/20 shadow-glass ring-1 ring-white/5",
+            isDragging && "border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/20",
+            disabled && "opacity-60 grayscale pointer-events-none"
           )}
           onDragOver={handleDragOver}
           onDragEnter={handleDragEnter}
@@ -334,10 +334,10 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
         >
           {/* Drag Overlay */}
           {isDragging && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[26px] bg-black/40 backdrop-blur-sm">
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[24px] bg-zinc-950/60 backdrop-blur-sm transition-all duration-200">
               <div className="flex flex-col items-center text-blue-400 animate-bounce">
-                <Paperclip className="w-10 h-10 mb-2" />
-                <span className="font-medium text-lg">Drop to attach</span>
+                <Paperclip className="w-8 h-8 mb-2" />
+                <span className="font-medium text-sm tracking-wide">Drop to attach</span>
               </div>
             </div>
           )}
@@ -351,20 +351,20 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             style={{ display: 'none' }}
           />
 
-          <div className="flex items-end gap-3 p-3">
+          <div className="flex items-end gap-2 p-2.5">
             {/* Attachment Button */}
             <button
               onClick={handleAttachClick}
               className={cn(
-                "flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 flex-shrink-0",
-                "text-white/50 hover:text-white hover:bg-white/10",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200 flex-shrink-0",
+                "text-zinc-400 hover:text-zinc-100 hover:bg-white/5",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50",
                 disabled && "cursor-not-allowed"
               )}
               disabled={disabled}
               title="Attach files"
             >
-              <Paperclip className="w-5 h-5" />
+              <Paperclip className="w-4.5 h-4.5" strokeWidth={2} />
             </button>
 
             {/* Search Toggle Button */}
@@ -372,25 +372,25 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
               <button
                 onClick={onSearchToggle}
                 className={cn(
-                  "flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 flex-shrink-0 relative",
+                  "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200 flex-shrink-0 relative",
                   searchEnabled
-                    ? "text-blue-400 bg-blue-500/20 hover:bg-blue-500/30"
-                    : "text-white/30 hover:text-white/50 hover:bg-white/5",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                    ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
+                    : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50",
                   disabled && "cursor-not-allowed"
                 )}
                 disabled={disabled}
-                title={searchEnabled ? "Smart Search: Auto (Click to toggle)" : "Smart Search: Off (Click to enable)"}
+                title={searchEnabled ? "Smart Search: Auto" : "Smart Search: Off"}
               >
-                <Globe className="w-5 h-5" />
+                <Globe className="w-4.5 h-4.5" strokeWidth={2} />
                 {searchEnabled && (
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-zinc-950 animate-pulse" />
+                  <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                 )}
               </button>
             )}
 
             {/* Text Input */}
-            <div className="flex-1 min-w-0 py-2">
+            <div className="flex-1 min-w-0 py-1.5 px-1">
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -404,15 +404,15 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 rows={1}
                 className={cn(
                   "w-full bg-transparent border-0 outline-none resize-none",
-                  "text-[15px] leading-relaxed text-white/90 placeholder:text-white/30",
-                  "font-normal tracking-wide", // Clean typography
-                  "scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent hover:scrollbar-thumb-white/20",
+                  "text-[15px] leading-relaxed text-zinc-100 placeholder:text-zinc-500",
+                  "font-normal tracking-normal antialiased",
+                  "scrollbar-hide", // Use custom utility
                   "selection:bg-blue-500/30 selection:text-blue-100"
                 )}
                 spellCheck={false}
                 style={{
-                  minHeight: `${MIN_TEXTAREA_HEIGHT - 16}px`, // Adjust for padding
-                  maxHeight: '60vh' // Allow growing up to 60% of screen
+                  minHeight: `${MIN_TEXTAREA_HEIGHT - 16}px`,
+                  maxHeight: '60vh'
                 }}
               />
             </div>
@@ -422,15 +422,14 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
               onClick={handleSubmit}
               disabled={disabled || (!input.trim() && !hasAttachedFiles && !hasAttachedImages)}
               className={cn(
-                "flex items-center justify-center w-10 h-10 rounded-full transition-all duration-300 flex-shrink-0",
-                "shadow-lg hover:shadow-blue-500/20",
+                "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-300 flex-shrink-0",
                 disabled || (!input.trim() && !hasAttachedFiles && !hasAttachedImages)
-                  ? "bg-white/5 text-white/20 cursor-not-allowed"
-                  : "bg-white text-black hover:scale-105 active:scale-95"
+                  ? "bg-white/5 text-zinc-600 cursor-not-allowed"
+                  : "bg-zinc-100 text-zinc-900 hover:bg-white hover:scale-105 active:scale-95 shadow-lg shadow-white/5"
               )}
             >
               {isStreaming ? (
-                <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-zinc-400 border-t-zinc-900 rounded-full animate-spin" />
               ) : (
                 <Send className="w-4 h-4 ml-0.5" strokeWidth={2.5} />
               )}
@@ -439,17 +438,17 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
 
           {/* Footer Metadata (Collapsible) */}
           <div className={cn(
-            "overflow-hidden transition-all duration-300 ease-in-out",
+            "overflow-hidden transition-all duration-300 ease-apple",
             showMetadata ? "max-h-8 opacity-100" : "max-h-0 opacity-0"
           )}>
-            <div className="px-5 pb-2.5 flex items-center justify-between text-[11px] font-medium text-white/30 select-none">
+            <div className="px-5 pb-2.5 flex items-center justify-between text-[10px] font-medium text-zinc-500 select-none">
               <div className="flex gap-3">
                 <span>{charCount.toLocaleString()} chars</span>
                 <span>{lineCount} lines</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">⌘</span>
-                <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">↵</span>
+                <span className="bg-white/5 px-1.5 py-0.5 rounded text-[9px] border border-white/5">⌘</span>
+                <span className="bg-white/5 px-1.5 py-0.5 rounded text-[9px] border border-white/5">↵</span>
                 <span>to send</span>
               </div>
             </div>
@@ -461,14 +460,14 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           <button
             onClick={onScrollToBottom}
             className={cn(
-              "absolute -top-14 left-1/2 -translate-x-1/2",
-              "w-9 h-9 rounded-full flex items-center justify-center",
-              "bg-[#1c1c1e] border border-white/10 text-white/70",
-              "shadow-xl backdrop-blur-md hover:bg-white/10 hover:text-white",
+              "absolute -top-16 left-1/2 -translate-x-1/2",
+              "w-8 h-8 rounded-full flex items-center justify-center",
+              "bg-zinc-800/80 border border-white/10 text-zinc-400",
+              "shadow-glass backdrop-blur-md hover:bg-zinc-700 hover:text-zinc-200",
               "transition-all duration-200 hover:scale-110 active:scale-95"
             )}
           >
-            <ArrowDown className="w-4 h-4" />
+            <ArrowDown className="w-4 h-4" strokeWidth={2} />
           </button>
         )}
       </div>
