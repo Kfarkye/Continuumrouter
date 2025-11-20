@@ -71,35 +71,115 @@ const ROUTER_CONFIG: Record<string, RouteProfile> = {
 
 const DEFAULT_MODEL_KEY = 'gemini';
 
+// Lane-specific persona system prompts
+const LANE_PERSONAS: Record<string, string> = {
+  code: `You are a senior software engineer with expertise in TypeScript, React, and modern web architecture. Provide production-ready code with error handling. Focus on best practices, performance, and maintainability.`,
+  creative: `You are a creative writing assistant. Help with storytelling, character development, and narrative structure. Maintain consistent tone and focus on engaging, imaginative content.`,
+  vision: `You are a visual analysis expert. Describe images thoroughly, noting important details, context, and actionable insights. Answer questions about visual content with precision.`,
+  general: '', // No persona override for general conversations
+};
+
 interface TaskRouteResult {
   taskType: string;
   profile: RouteProfile;
   reasoning: string;
+  agentName: string;
+  intentDetected: string;
 }
 
-function decideRoute(messages: any[], imageCount: number): TaskRouteResult {
+function decideRoute(messages: any[], imageCount: number, requestId: string): TaskRouteResult {
   const lastMessage = messages[messages.length - 1];
   const userText = lastMessage?.content?.toLowerCase() || '';
 
+  const DEBUG_ROUTING = env.DEBUG_ROUTING === 'true';
+
+  if (DEBUG_ROUTING) {
+    log("DEBUG", "[ROUTER-CLASSIFY] Analyzing message", {
+      requestId,
+      messageLength: userText.length,
+      imageCount
+    });
+  }
+
   if (imageCount > 0) {
     const profile = ROUTER_CONFIG['anthropic'];
-    return { taskType: 'vision', profile, reasoning: `Vision task with ${imageCount} images.` };
+    const result = {
+      taskType: 'vision',
+      profile,
+      reasoning: `Vision task with ${imageCount} images.`,
+      agentName: 'Vision Analyst',
+      intentDetected: 'Image analysis request'
+    };
+    if (DEBUG_ROUTING) {
+      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
+        requestId,
+        taskType: result.taskType,
+        agentName: result.agentName,
+        trigger: 'image attachment'
+      });
+    }
+    return result;
   }
 
-  const codeWords = ['code', 'function', 'debug', 'implement', 'algorithm', 'error', 'bug'];
+  const codeWords = ['code', 'function', 'debug', 'implement', 'algorithm', 'error', 'bug', 'component', 'typescript', 'react'];
   if (codeWords.some(word => userText.includes(word))) {
     const profile = ROUTER_CONFIG['anthropic'];
-    return { taskType: 'code', profile, reasoning: 'Code-related task.' };
+    const result = {
+      taskType: 'code',
+      profile,
+      reasoning: 'Code-related task.',
+      agentName: 'Code Assistant',
+      intentDetected: 'Programming task detected'
+    };
+    if (DEBUG_ROUTING) {
+      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
+        requestId,
+        taskType: result.taskType,
+        agentName: result.agentName,
+        trigger: 'code keywords'
+      });
+    }
+    return result;
   }
 
-  const creativeWords = ['write', 'story', 'poem', 'creative', 'blog'];
+  const creativeWords = ['write', 'story', 'poem', 'creative', 'blog', 'narrative', 'character'];
   if (creativeWords.some(word => userText.includes(word))) {
     const profile = ROUTER_CONFIG['openai'];
-    return { taskType: 'creative', profile, reasoning: 'Creative writing task.' };
+    const result = {
+      taskType: 'creative',
+      profile,
+      reasoning: 'Creative writing task.',
+      agentName: 'Creative Writer',
+      intentDetected: 'Creative writing request'
+    };
+    if (DEBUG_ROUTING) {
+      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
+        requestId,
+        taskType: result.taskType,
+        agentName: result.agentName,
+        trigger: 'creative keywords'
+      });
+    }
+    return result;
   }
 
   const profile = ROUTER_CONFIG[DEFAULT_MODEL_KEY];
-  return { taskType: 'general', profile, reasoning: `General conversation. Routed to default (Gemini).` };
+  const result = {
+    taskType: 'general',
+    profile,
+    reasoning: `General conversation. Routed to default (Gemini).`,
+    agentName: 'General Assistant',
+    intentDetected: 'General conversation'
+  };
+  if (DEBUG_ROUTING) {
+    log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
+      requestId,
+      taskType: result.taskType,
+      agentName: result.agentName,
+      trigger: 'fallback'
+    });
+  }
+  return result;
 }
 
 async function processStream(response: Response, parser: (data: string) => string | null, provider: string): Promise<ReadableStream> {
@@ -478,7 +558,7 @@ Deno.serve(async (req: Request) => {
 
     const images = await fetchAndEncodeImages(imageIds || [], user.id);
 
-    const { taskType, profile, reasoning } = decideRoute(messages, images.length);
+    const { taskType, profile, reasoning, agentName, intentDetected } = decideRoute(messages, images.length, requestId);
     const { provider, model, limits } = profile;
 
     log("INFO", "[ROUTER] Decision Made", {
@@ -486,6 +566,8 @@ Deno.serve(async (req: Request) => {
       provider,
       model,
       taskType,
+      agentName,
+      intentDetected,
       reasoning,
       imageCount: images.length
     });
@@ -575,7 +657,13 @@ Deno.serve(async (req: Request) => {
     });
 
     const domainContext = await getDomainContext(user.id);
-    let anthropicSystemPrompt = domainContext || "You are a helpful AI assistant.";
+    const baseSystemPrompt = domainContext || "You are a helpful AI assistant.";
+
+    // Inject lane-specific persona if available
+    const lanePersona = LANE_PERSONAS[taskType] || '';
+    const anthropicSystemPrompt = lanePersona
+      ? `${baseSystemPrompt}\n\n${lanePersona}`
+      : baseSystemPrompt;
 
     const apiPayload = formatMessagesForProvider(provider, messages, images);
 
@@ -613,11 +701,21 @@ Deno.serve(async (req: Request) => {
       async start(controller) {
         let streamProvider = provider;
         try {
+          // Send router decision event for UI theater
+          sendSSE(controller, {
+            type: 'router_decision',
+            agent: agentName,
+            intent: intentDetected,
+            provider,
+            model
+          });
+
+          // Send model switch event for backward compatibility
           sendSSE(controller, {
             type: 'model_switch',
             provider,
             model,
-            metadata: { taskType, reasoning }
+            metadata: { taskType, reasoning, agentName, intentDetected }
           });
 
           let apiStream: ReadableStream;

@@ -56,7 +56,7 @@ type Action =
 
 // Structure of the data expected from the SSE stream
 interface SSEMessage {
-    type: 'text' | 'progress' | 'model_switch' | 'done' | 'error' | 'action_request';
+    type: 'text' | 'progress' | 'model_switch' | 'router_decision' | 'done' | 'error' | 'action_request';
     content?: string;
     progress?: number;
     step?: string;
@@ -65,6 +65,8 @@ interface SSEMessage {
     metadata?: any;
     action?: string;
     args?: unknown;
+    agent?: string;
+    intent?: string;
 }
 
 // ============================================================================
@@ -475,6 +477,38 @@ export const useAiRouterChat = ({
               case 'progress':
                 if (data.progress !== undefined && data.step) {
                     dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: data.progress, step: data.step } });
+                }
+                break;
+
+              case 'router_decision':
+                // Debug log routing decision
+                if (import.meta.env.DEV) {
+                  console.group('🎭 Router Decision');
+                  console.log('Agent:', data.agent);
+                  console.log('Intent:', data.intent);
+                  console.log('Model:', `${data.provider}/${data.model}`);
+                  console.groupEnd();
+                }
+
+                // Add theater messages to the chat
+                if (data.agent && data.intent) {
+                  const theaterMessages = [
+                    `[System: Analysis complete. Intent: ${data.intent}]`,
+                    `[System: Routing to ${data.agent} (${data.model})...]`,
+                    `[Status: Connected]`
+                  ];
+
+                  theaterMessages.forEach((content) => {
+                    dispatch({
+                      type: 'APPEND_MESSAGE',
+                      payload: {
+                        id: crypto.randomUUID(),
+                        role: 'system',
+                        content,
+                        created_at: new Date().toISOString(),
+                      }
+                    });
+                  });
                 }
                 break;
 

@@ -285,6 +285,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     visible: { opacity: 1, scale: 1, y: 0 },
   };
   // --- Render Logic ---
+  // 0. Render System Messages (Router Theater)
+  if (message.role === 'system') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -5 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="flex justify-center w-full py-1.5"
+      >
+        <div className="px-4 py-1.5 text-xs font-mono text-zinc-500 bg-zinc-900/50 border border-white/5 rounded-lg backdrop-blur-sm">
+          {message.content}
+        </div>
+      </motion.div>
+    );
+  }
+
   // 1. Render Editing Interface
   if (isEditing) {
     return (
