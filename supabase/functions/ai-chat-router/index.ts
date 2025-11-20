@@ -632,9 +632,7 @@ Deno.serve(async (req: Request) => {
               content: `An error occurred during processing: ${(error as Error).message}`
             });
             controller.close();
-          } catch (e) {
-            // Ignore
-          }
+          } catch (e) {}
         }
       }
     });
