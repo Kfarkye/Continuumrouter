@@ -1,12 +1,12 @@
 // src/components/MessageList.tsx
 import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -21,24 +21,24 @@ import { MessageBubble } from './MessageBubble';
 const APPLE_EASE_DECELERATE = [0.22, 1, 0.36, 1];
 
 interface MessageListProps {
-  messages: ChatMessage[];
-  isStreaming: boolean;
+  messages: ChatMessage[];
+  isStreaming: boolean;
   isLoadingHistory?: boolean; // Added for initial load state
   // Pagination props removed
   onEditMessage?: (messageId: string, newContent: string) => void; // NEW
 }
 
 const MemoizedMessageBubble = memo(MessageBubble, (prev, next) => {
-  return (
-    prev.message.id === next.message.id &&
-    prev.message.content === next.message.content &&
-    prev.message.status === next.message.status &&
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.content === next.message.content &&
+    prev.message.status === next.message.status &&
     // ENHANCEMENT: Check metadata changes as they might affect rendering
-    JSON.stringify(prev.message.metadata) === JSON.stringify(next.message.metadata) &&
-    prev.isStreaming === next.isStreaming &&
-    prev.isLatest === next.isLatest &&
+    JSON.stringify(prev.message.metadata) === JSON.stringify(next.message.metadata) &&
+    prev.isStreaming === next.isStreaming &&
+    prev.isLatest === next.isLatest &&
     prev.onEditMessage === next.onEditMessage
-  );
+  );
 });
 
 MemoizedMessageBubble.displayName = 'MemoizedMessageBubble';
@@ -47,8 +47,8 @@ MemoizedMessageBubble.displayName = 'MemoizedMessageBubble';
 // Note: useInfiniteScrollReversed removed as pagination is not implemented.
 
 /**
- * useScrollActivity (For A11y optimization)
- */
+ * useScrollActivity (For A11y optimization)
+ */
 function useScrollActivity(containerRef: React.RefObject<HTMLElement>): boolean {
   const [isScrolling, setIsScrolling] = useState(false);
   const timeoutRef = useRef<number | null>(null);
@@ -76,17 +76,17 @@ function useScrollActivity(containerRef: React.RefObject<HTMLElement>): boolean 
 }
 
 interface UseAutoScrollResult {
-  isAtBottom: boolean;
-  showScrollToBottom: boolean;
-  scrollToBottom: (behavior?: ScrollBehavior) => void;
+  isAtBottom: boolean;
+  showScrollToBottom: boolean;
+  scrollToBottom: (behavior?: ScrollBehavior) => void;
 }
 
 const SCROLL_BOTTOM_THRESHOLD = 120; // Increased threshold slightly
 
 /**
- * useAutoScrollReversed
- * Adapted for Reverse Layout and robust streaming.
- */
+ * useAutoScrollReversed
+ * Adapted for Reverse Layout and robust streaming.
+ */
 function useAutoScrollReversed(
   containerRef: React.RefObject<HTMLDivElement>,
   lastMessage: ChatMessage | null,
@@ -151,204 +151,191 @@ function useAutoScrollReversed(
 // --- Component ---
 
 /**
- * MessageList
- */
+ * MessageList
+ */
 export const MessageList: React.FC<MessageListProps> = ({
-  messages,
-  isStreaming,
+  messages,
+  isStreaming,
   isLoadingHistory = false,
   onEditMessage,
 }) => {
-  type ScrollContainer = HTMLDivElement;
-  type VirtualItemElement = HTMLDivElement;
+  type ScrollContainer = HTMLDivElement;
+  type VirtualItemElement = HTMLDivElement;
 
-  const scrollContainerRef = useRef<ScrollContainer>(null);
-  const isInitialRenderRef = useRef(true); // Used for animation control
+  const scrollContainerRef = useRef<ScrollContainer>(null);
+  const isInitialRenderRef = useRef(true); // Used for animation control
 
   // Normal order: oldest at top, newest at bottom (like ChatGPT)
-  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
 
 
-  const { showScrollToBottom, scrollToBottom } = useAutoScrollReversed(
-    scrollContainerRef,
-    lastMessage,
-    messages.length,
-    isStreaming
-  );
+  const { showScrollToBottom, scrollToBottom } = useAutoScrollReversed(
+    scrollContainerRef,
+    lastMessage,
+    messages.length,
+    isStreaming
+  );
 
-  const isScrolling = useScrollActivity(scrollContainerRef);
-  const isBusy = isScrolling || isStreaming;
+  const isScrolling = useScrollActivity(scrollContainerRef);
+  const isBusy = isScrolling || isStreaming;
 
-  useEffect(() => {
-    isInitialRenderRef.current = false;
-  }, []);
+  useEffect(() => {
+    isInitialRenderRef.current = false;
+  }, []);
 
-  const virtualizer = useVirtualizer<ScrollContainer, VirtualItemElement>({
-    count: messages.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 150,
-    overscan: 10,
-  });
+  const virtualizer = useVirtualizer<ScrollContainer, VirtualItemElement>({
+    count: messages.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 150,
+    overscan: 10,
+  });
 
   // ENHANCEMENT: Loading State
   if (isLoadingHistory) {
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center p-8 antialiased bg-charcoal-950">
-            <Spinner size="lg" color="white" />
-            <p className="mt-4 text-sm text-charcoal-400 animate-pulse-subtle">Loading conversation...</p>
-        </div>
+      <div className="flex h-full w-full flex-col items-center justify-center p-8 antialiased">
+        <Spinner size="lg" color="white" />
+        <p className="mt-4 text-sm text-zinc-500 animate-pulse">Loading conversation...</p>
+      </div>
     );
   }
 
-  // --- Liquid Glass Empty State (Highly Polished) ---
-  if (messages.length === 0) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center p-8 antialiased bg-charcoal-950">
-        {/* Glass Icon Container: Using the glass-container-dark utility */}
+  // --- Empty State (Minimalist) ---
+  if (messages.length === 0) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center p-8 antialiased">
         <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, ease: APPLE_EASE_DECELERATE }}
-            className="
-              flex h-32 w-32 items-center justify-center rounded-3xl
-              glass-container-dark
-              shadow-2xl-dark
-              transition-all duration-500 ease-apple
-              hover:shadow-glow-sm hover:border-white/20
-            "
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6, ease: APPLE_EASE_DECELERATE }}
+          className="
+              flex h-24 w-24 items-center justify-center rounded-3xl
+              bg-zinc-900/50 border border-white/5
+              shadow-glass-sm
+            "
         >
-          <Cpu className="h-14 w-14 text-premium-blue-500" strokeWidth={1.25} />
-        </motion.div>
+          <Cpu className="h-10 w-10 text-zinc-400" strokeWidth={1.5} />
+        </motion.div>
         <motion.h3
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1, ease: APPLE_EASE_DECELERATE }}
-           className="mt-8 text-2xl font-semibold text-white tracking-tight-apple">
-          How can I assist you today?
-        </motion.h3>
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1, ease: APPLE_EASE_DECELERATE }}
+          className="mt-6 text-xl font-medium text-zinc-200 tracking-tight">
+          How can I assist you today?
+        </motion.h3>
         <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2, ease: APPLE_EASE_DECELERATE }}
-           className="mt-3 text-base font-light text-charcoal-400 text-center">
-          Type a message or upload files to begin.
-        </motion.p>
-      </div>
-    );
-  }
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2, ease: APPLE_EASE_DECELERATE }}
+          className="mt-2 text-sm text-zinc-500 text-center">
+          Type a message or upload files to begin.
+        </motion.p>
+      </div>
+    );
+  }
 
-  return (
-    <div className="relative flex w-full flex-1 overflow-hidden antialiased bg-charcoal-950">
-      <div
-        ref={scrollContainerRef}
-        // POLISH: Applying the hyper-minimalist scrollbar utilities
-        className="relative flex h-full w-full flex-col items-center overflow-y-auto
-                   scrollbar-thin scrollbar-webkit-base
-                   scrollbar-track-transparent
-                   scrollbar-thumb-subtle scrollbar-thumb-active
+  return (
+    <div className="relative flex w-full flex-1 overflow-hidden antialiased">
+      <div
+        ref={scrollContainerRef}
+        // POLISH: Applying the hyper-minimalist scrollbar utilities
+        className="relative flex h-full w-full flex-col items-center overflow-y-auto
+                   scrollbar-hide
                    transition-colors duration-300"
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
-        aria-busy={isBusy}
-        aria-label="Chat History"
-      >
-        {/* Use max-w-thread-wide for comfortable reading width */}
-        <div className="w-full max-w-thread-wide px-4 pt-40 pb-6 md:px-6 lg:px-8">
-          <div
-            role="list"
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
-          >
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const index = virtualRow.index;
-              const message = messages[index];
-              if (!message) return null;
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-busy={isBusy}
+        aria-label="Chat History"
+      >
+        {/* Use max-w-thread-wide for comfortable reading width */}
+        <div className="w-full max-w-5xl px-4 pt-4 pb-6 md:px-6 lg:px-8">
+          <div
+            role="list"
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const index = virtualRow.index;
+              const message = messages[index];
+              if (!message) return null;
 
-              const isLatest = index === messages.length - 1;
-              const isMessageStreaming =
-                isStreaming && isLatest && message.status === 'streaming';
+              const isLatest = index === messages.length - 1;
+              const isMessageStreaming =
+                isStreaming && isLatest && message.status === 'streaming';
 
-              const shouldAnimate = isLatest && !isInitialRenderRef.current;
+              const shouldAnimate = isLatest && !isInitialRenderRef.current;
 
-              return (
-                <div
-                  key={message.id}
-                  role="listitem"
-                  data-index={virtualRow.index}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translate3d(0, ${virtualRow.start}px, 0)`,
-                    margin: 0,
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <motion.div
-                    // POLISH: Subtle entry animation (15px)
-                    initial={shouldAnimate ? { opacity: 0, y: 15 } : false}
-                    animate={shouldAnimate ? { opacity: 1, y: 0 } : undefined}
-                    transition={{ duration: 0.5, ease: APPLE_EASE_DECELERATE }}
-                  >
-                    <MemoizedMessageBubble
-                      message={message}
-                      isLatest={isLatest}
-                      isStreaming={isMessageStreaming}
-                        onEditMessage={onEditMessage} // NEW: Pass the handler down
-                    />
-                  </motion.div>
-                </div>
-              );
-            })}
-          </div>
+              return (
+                <div
+                  key={message.id}
+                  role="listitem"
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translate3d(0, ${virtualRow.start}px, 0)`,
+                    margin: 0,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <motion.div
+                    // POLISH: Subtle entry animation (15px)
+                    initial={shouldAnimate ? { opacity: 0, y: 10 } : false}
+                    animate={shouldAnimate ? { opacity: 1, y: 0 } : undefined}
+                    transition={{ duration: 0.4, ease: APPLE_EASE_DECELERATE }}
+                  >
+                    <MemoizedMessageBubble
+                      message={message}
+                      isLatest={isLatest}
+                      isStreaming={isMessageStreaming}
+                      onEditMessage={onEditMessage} // NEW: Pass the handler down
+                    />
+                  </motion.div>
+                </div>
+              );
+            })}
+          </div>
 
-            {/* Removed Pagination Controls (Load More/Spinner) as they are not supported by the simplified hook */}
+          {/* Removed Pagination Controls (Load More/Spinner) as they are not supported by the simplified hook */}
 
-        </div>
-      </div>
+        </div>
+      </div>
 
-      {/* --- Scroll to Bottom Button (Liquid Glass - Centered/Iconic) --- */}
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none">
-        <AnimatePresence initial={false}>
-          {showScrollToBottom && (
-            <motion.button
-              key="scroll-to-bottom"
-              type="button"
-              onClick={() => scrollToBottom('smooth')}
-              className="
-                    pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full
-
-                    /* Glass Effect - Using the dark utility for prominence */
-                    glass-container-dark
-                    shadow-xl-dark
-
-                    /* Interaction */
-                    transition-all duration-300 ease-apple
-                    hover:border-white/30
-
-                    /* Accessibility */
-                    focus-ring-premium
-                "
-              aria-label="Scroll to latest messages"
-              // POLISH: Tactile spring animation
-              initial={{ opacity: 0, y: 25, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 25, scale: 0.8 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <ArrowDown className="h-5 w-5 text-white" strokeWidth={2.5} />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
+      {/* --- Scroll to Bottom Button (Minimalist) --- */}
+      <div className="absolute bottom-6 left-0 right-0 flex justify-center pointer-events-none">
+        <AnimatePresence initial={false}>
+          {showScrollToBottom && (
+            <motion.button
+              key="scroll-to-bottom"
+              type="button"
+              onClick={() => scrollToBottom('smooth')}
+              className="
+                    pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full
+                    bg-zinc-800/80 backdrop-blur-md border border-white/10
+                    text-zinc-400 hover:text-white hover:bg-zinc-700
+                    shadow-lg transition-all duration-200
+                "
+              aria-label="Scroll to latest messages"
+              // POLISH: Tactile spring animation
+              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <ArrowDown className="h-4 w-4" strokeWidth={2} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
 };
