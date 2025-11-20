@@ -227,12 +227,53 @@ Deno.serve(async (req: Request) => {
     console.log(`[SEARCH-DEBUG] Cache Miss - Query Hash: ${queryHash}`);
     console.log(`[SEARCH-DEBUG] Calling Perplexity API...`);
 
+    const currentDate = new Date();
+    const dateString = currentDate.toISOString().split('T')[0];
+    const dayOfWeek = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
+    const fullDateString = currentDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const enhancedSystemPrompt = `You are a precise research assistant focused on current, accurate information.
+
+IMPORTANT CONTEXT:
+- Today's date is: ${fullDateString} (${dayOfWeek})
+- ISO date: ${dateString}
+
+ACCURACY REQUIREMENTS:
+1. When asked about "today's" events, ONLY include events happening on ${dateString}
+2. Do NOT include events from past dates or future dates
+3. If you mention dates in your response, verify they match ${dateString}
+4. Prioritize official sources and real-time data
+5. If information is uncertain or unavailable, state that clearly
+6. Cite all sources with clear attribution
+
+If the user asks about time-sensitive information (today, tonight, now), emphasize recency and accuracy over comprehensiveness.`;
+
+    let enhancedQuery = query;
+
+    const timeKeywords = ['today', 'tonight', 'this evening', 'now', 'current'];
+    const containsTimeReference = timeKeywords.some(keyword =>
+      query.toLowerCase().includes(keyword)
+    );
+
+    if (containsTimeReference) {
+      enhancedQuery = `${query}\n\nIMPORTANT: Only provide information for ${fullDateString} (${dateString}). Exclude past and future dates.`;
+      console.log(`[SEARCH-DEBUG] Enhanced query with date context`);
+    }
+
+    console.log(`[SEARCH-DEBUG] Original Query: "${query}"`);
+    console.log(`[SEARCH-DEBUG] Enhanced Query: "${enhancedQuery}"`);
+    console.log(`[SEARCH-DEBUG] Date Context: ${fullDateString}`);
+
     const messages = [{
       role: 'system',
-      content: 'You are a helpful research assistant. Provide accurate, well-cited information with clear source attribution.'
+      content: enhancedSystemPrompt
     }, {
       role: 'user',
-      content: query
+      content: enhancedQuery
     }];
 
     const perplexityPayload: any = {
@@ -276,6 +317,27 @@ Deno.serve(async (req: Request) => {
     console.log(`[SEARCH-DEBUG] ========== PROCESSING RESULTS ==========`);
     console.log(`[SEARCH-DEBUG] Search Summary:`, searchSummary.substring(0, 200));
     console.log(`[SEARCH-DEBUG] Citations:`, JSON.stringify(citations, null, 2));
+
+    const datePattern = /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4})\b/gi;
+    const foundDates = searchSummary.match(datePattern) || [];
+
+    if (foundDates.length > 0) {
+      console.log(`[SEARCH-DEBUG] ========== DATE VERIFICATION ==========`);
+      console.log(`[SEARCH-DEBUG] Expected Date: ${dateString}`);
+      console.log(`[SEARCH-DEBUG] Dates Found in Response:`, foundDates);
+
+      const unexpectedDates = foundDates.filter(date => {
+        const normalized = new Date(date).toISOString().split('T')[0];
+        return normalized !== dateString && !isNaN(new Date(date).getTime());
+      });
+
+      if (unexpectedDates.length > 0) {
+        console.warn(`[SEARCH-DEBUG] ⚠️  WARNING: Response contains dates other than today:`, unexpectedDates);
+        console.warn(`[SEARCH-DEBUG] This may indicate stale or inaccurate information`);
+      } else {
+        console.log(`[SEARCH-DEBUG] ✓ Date verification passed`);
+      }
+    }
 
     const references = citations.slice(0, max_results).map((citation, index) => ({
       url: citation.url,
