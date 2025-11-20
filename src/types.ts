@@ -1,3 +1,31 @@
+// ============================================================================
+// ID Type Aliases (prevents ID confusion bugs)
+// ============================================================================
+
+/**
+ * SessionId: Used for frontend session tracking and local state management.
+ * This is typically generated client-side and used for UI purposes only.
+ * NOT a database foreign key.
+ */
+export type SessionId = string;
+
+/**
+ * ConversationId: The actual database primary key (UUID) for ai_conversations table.
+ * This is the value that should be used for database relationships and FK constraints.
+ * ALWAYS use this for conversation_id columns in database inserts/queries.
+ */
+export type ConversationId = string;
+
+/**
+ * Important: SessionId and ConversationId are conceptually different!
+ * - SessionId: Client-side tracking identifier (may not exist in DB yet)
+ * - ConversationId: Database primary key (must exist in ai_conversations.id)
+ */
+
+// ============================================================================
+// Domain Types
+// ============================================================================
+
 export interface Project {
   id: string;
   name: string;

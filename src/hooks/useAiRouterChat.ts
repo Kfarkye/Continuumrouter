@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useReducer } from 'react';
-import { ChatMessage, StoredFile, AiModelKey } from '../types';
+import { ChatMessage, StoredFile, AiModelKey, SessionId, ConversationId } from '../types';
 import { generateTempId } from '../lib/utils';
 import { MODEL_CONFIGS } from '../config/models';
 import { supabase } from '../lib/supabaseClient';
@@ -18,7 +18,7 @@ const INITIAL_RETRY_DELAY = 500; // ms
 // ============================================================================
 
 interface UseAiRouterChatArgs {
-  sessionId: string | null;
+  sessionId: SessionId | null; // UI session tracking
   accessToken: string | null;
   userId: string | null;
   files: StoredFile[];
@@ -36,12 +36,14 @@ interface ChatState {
     error: Error | null;
     retryCount: number;
     isRetrying: boolean;
+    conversationId: ConversationId | null; // Actual database conversation.id (different from sessionId)
 }
 
 // Reducer Actions
 type Action =
   | { type: 'HISTORY_LOADING' }
   | { type: 'HISTORY_LOADED'; payload: ChatMessage[] }
+  | { type: 'SET_CONVERSATION_ID'; payload: string }
   | { type: 'SEND_START'; payload: { userMessage: ChatMessage, assistantPlaceholder: ChatMessage } }
   | { type: 'STREAM_CHUNK'; payload: { content: string; messageId: string } }
   | { type: 'PROGRESS_UPDATE'; payload: { progress: number; step: string } }
@@ -129,6 +131,7 @@ const initialState: ChatState = {
     error: null,
     retryCount: 0,
     isRetrying: false,
+    conversationId: null,
 };
 
 const chatReducer = (state: ChatState, action: Action): ChatState => {
@@ -137,6 +140,8 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
         return { ...state, isLoadingHistory: true, error: null };
       case 'HISTORY_LOADED':
         return { ...state, messages: action.payload, isLoadingHistory: false };
+      case 'SET_CONVERSATION_ID':
+        return { ...state, conversationId: action.payload };
       case 'SEND_START':
         // Optimistic UI update
         return {
@@ -251,6 +256,11 @@ export const useAiRouterChat = ({
 
         debugLog('📂 Found conversation', { conversationId: conversation.id, sessionId });
 
+        // Store the actual conversation ID for use in sending messages
+        if (!cancelled) {
+          dispatch({ type: 'SET_CONVERSATION_ID', payload: conversation.id });
+        }
+
         // Load the most recent messages (last 50)
         const { data: history, error: historyError } = await supabase
           .from('ai_messages')
@@ -350,15 +360,47 @@ export const useAiRouterChat = ({
         content: content
       });
 
+      // CRITICAL FIX: Use actual conversation.id from database, NOT sessionId
+      // sessionId is for UI tracking only, conversationId is the database FK
+      const actualConversationId = state.conversationId || sessionId;
+
+      if (!state.conversationId && sessionId) {
+        debugLog('⚠️ No conversationId in state, attempting to resolve from sessionId', { sessionId });
+        // Try to resolve conversation ID before sending
+        try {
+          const { data: conv, error: convError } = await supabase
+            .from('ai_conversations')
+            .select('id')
+            .eq('session_id', sessionId)
+            .maybeSingle();
+
+          if (convError) {
+            debugLog('❌ Failed to resolve conversation ID', { error: convError });
+          } else if (conv) {
+            debugLog('✅ Resolved conversation ID', { conversationId: conv.id, sessionId });
+            dispatch({ type: 'SET_CONVERSATION_ID', payload: conv.id });
+          }
+        } catch (err) {
+          debugLog('❌ Exception resolving conversation ID', err);
+        }
+      }
+
       const payload = {
         messages: conversationMessages,
-        conversationId: sessionId,
+        conversationId: state.conversationId || sessionId, // Use resolved ID if available
+        sessionId: sessionId, // Include sessionId separately for backend reference
         imageIds,
         preferredProvider: providerHint !== 'auto' ? providerHint : undefined,
         mode: 'chat'
       };
 
-      debugLog('📤 Sending payload', { messageCount: conversationMessages.length, hasImages: imageIds.length > 0 });
+      debugLog('📤 Sending payload', {
+        messageCount: conversationMessages.length,
+        hasImages: imageIds.length > 0,
+        conversationId: payload.conversationId,
+        sessionId: payload.sessionId,
+        idsMatch: payload.conversationId === payload.sessionId
+      });
 
       // --- Network Request (with Retry Logic) ---
       const response = await fetchWithRetry(API_ENDPOINT, {

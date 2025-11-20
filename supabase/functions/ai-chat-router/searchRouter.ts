@@ -23,10 +23,33 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
     console.log('[ROUTER-DEBUG]', requestId, 'Conversation ID:', conversationId);
     console.log('[ROUTER-DEBUG]', requestId, 'User ID:', userId);
 
+    // CRITICAL FIX: Validate conversation exists before proceeding
+    // The conversationId should be the actual database PK, not sessionId
+    const { data: existingConversation, error: convCheckError } = await supabase
+      .from('ai_conversations')
+      .select('id, session_id')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (convCheckError) {
+      console.error('[ROUTER-DEBUG]', requestId, 'Conversation validation error:', convCheckError.message);
+      throw new Error(`Failed to validate conversation: ${convCheckError.message}`);
+    }
+
+    if (!existingConversation) {
+      console.warn('[ROUTER-DEBUG]', requestId, 'Conversation not found with ID:', conversationId);
+      throw new Error(`Invalid conversation ID: ${conversationId}. Conversation does not exist in database.`);
+    }
+
+    console.log('[ROUTER-DEBUG]', requestId, 'Conversation validated:', {
+      conversationId: existingConversation.id,
+      sessionId: existingConversation.session_id
+    });
+
     const searchPayload = {
       query,
-      conversation_id: conversationId,
-      session_id: conversationId,
+      conversation_id: conversationId, // Use validated conversation ID
+      session_id: existingConversation.session_id, // Use actual session_id from DB
       trigger_source: 'auto'
     };
 

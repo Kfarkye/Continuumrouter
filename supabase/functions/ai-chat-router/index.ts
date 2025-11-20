@@ -498,6 +498,82 @@ Deno.serve(async (req: Request) => {
       model
     });
 
+    // CRITICAL: Validate conversation exists before inserting messages
+    // This prevents FK constraint violations (Error 23503)
+    log("INFO", "[ROUTER-DEBUG] Validating conversation ID", {
+      requestId,
+      conversationId,
+      sessionId: body.sessionId,
+      idsMatch: conversationId === body.sessionId
+    });
+
+    const { data: existingConversation, error: convCheckError } = await supabaseAdmin
+      .from('ai_conversations')
+      .select('id')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (convCheckError) {
+      log("ERROR", "[ROUTER-DEBUG] Conversation validation error", {
+        requestId,
+        conversationId,
+        error: convCheckError.message
+      });
+      throw new Error(`Failed to validate conversation: ${convCheckError.message}`);
+    }
+
+    if (!existingConversation) {
+      log("WARN", "[ROUTER-DEBUG] Conversation not found, attempting fallback lookup", {
+        requestId,
+        conversationId,
+        sessionId: body.sessionId
+      });
+
+      // Try to find by session_id if conversationId doesn't match
+      if (body.sessionId && conversationId === body.sessionId) {
+        const { data: sessionConv, error: sessionError } = await supabaseAdmin
+          .from('ai_conversations')
+          .select('id')
+          .eq('session_id', body.sessionId)
+          .maybeSingle();
+
+        if (sessionError) {
+          log("ERROR", "[ROUTER-DEBUG] Session lookup failed", {
+            requestId,
+            sessionId: body.sessionId,
+            error: sessionError.message
+          });
+        } else if (sessionConv) {
+          log("INFO", "[ROUTER-DEBUG] Found conversation via session_id", {
+            requestId,
+            foundConversationId: sessionConv.id,
+            sessionId: body.sessionId
+          });
+          // Use the correct conversation ID
+          conversationId = sessionConv.id;
+        } else {
+          log("ERROR", "[ROUTER-DEBUG] No conversation found for session", {
+            requestId,
+            sessionId: body.sessionId,
+            providedConversationId: conversationId
+          });
+          throw new Error(`Conversation not found. Please start a new conversation. (Provided ID: ${conversationId}, Session: ${body.sessionId})`);
+        }
+      } else {
+        log("ERROR", "[ROUTER-DEBUG] Invalid conversation ID", {
+          requestId,
+          conversationId,
+          hint: "Conversation ID does not exist in database"
+        });
+        throw new Error(`Invalid conversation ID: ${conversationId}`);
+      }
+    }
+
+    log("INFO", "[ROUTER-DEBUG] Conversation validated successfully", {
+      requestId,
+      conversationId
+    });
+
     const domainContext = await getDomainContext(user.id);
     let anthropicSystemPrompt = domainContext || "You are a helpful AI assistant.";
 
@@ -513,10 +589,24 @@ Deno.serve(async (req: Request) => {
         mode: mode || 'chat'
       }
     }).then(({ error }) => {
-      if (error) log("ERROR", "[DB-ASYNC] Failed to persist user message", {
-        requestId,
-        error: error.message
-      });
+      if (error) {
+        log("ERROR", "[DB-ASYNC] Failed to persist user message", {
+          requestId,
+          conversationId,
+          error: error.message,
+          errorCode: error.code,
+          errorDetails: error.details
+        });
+        // Log FK violation details for debugging
+        if (error.code === '23503') {
+          log("ERROR", "[DB-ASYNC] Foreign Key constraint violation detected!", {
+            requestId,
+            conversationId,
+            hint: "The conversation_id does not exist in ai_conversations table",
+            error: error.message
+          });
+        }
+      }
     });
 
     const stream = new ReadableStream({
