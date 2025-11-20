@@ -336,14 +336,29 @@ export const useAiRouterChat = ({
     }
 
     try {
+      // Build messages array from current conversation history + new user message
+      const conversationMessages = state.messages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }));
+
+      // Add the new user message
+      conversationMessages.push({
+        role: 'user',
+        content: content
+      });
+
       const payload = {
-        sessionId,
-        userMessage: content,
+        messages: conversationMessages,
+        conversationId: sessionId,
         imageIds,
-        providerHint,
-        spaceId,
-        // memories: [] // Add relevant memories if applicable
+        preferredProvider: providerHint !== 'auto' ? providerHint : undefined,
+        mode: 'chat'
       };
+
+      debugLog('📤 Sending payload', { messageCount: conversationMessages.length, hasImages: imageIds.length > 0 });
 
       // --- Network Request (with Retry Logic) ---
       const response = await fetchWithRetry(API_ENDPOINT, {
