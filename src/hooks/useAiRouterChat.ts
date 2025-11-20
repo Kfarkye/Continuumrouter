@@ -34,6 +34,8 @@ interface ChatState {
     currentProgress: number;
     currentStep: string;
     error: Error | null;
+    retryCount: number;
+    isRetrying: boolean;
 }
 
 // Reducer Actions
@@ -46,6 +48,7 @@ type Action =
   | { type: 'MODEL_SWITCH'; payload: { messageId: string, provider: string; model: string; metadata: any } }
   | { type: 'STREAM_END'; payload: { messageId: string } }
   | { type: 'ERROR'; payload: { error: Error, messageId?: string } }
+  | { type: 'RETRY_START'; payload: { attempt: number } }
   | { type: 'APPEND_MESSAGE'; payload: ChatMessage }
   | { type: 'CLEAR_MESSAGES' };
 
@@ -124,6 +127,8 @@ const initialState: ChatState = {
     currentProgress: 0,
     currentStep: '',
     error: null,
+    retryCount: 0,
+    isRetrying: false,
 };
 
 const chatReducer = (state: ChatState, action: Action): ChatState => {
@@ -169,7 +174,7 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
         );
         return { ...state, messages: updatedMessagesEnd, isSending: false, currentProgress: 100, currentStep: 'Complete' };
       case 'ERROR':
-        let errorState = { ...state, error: action.payload.error, isSending: false, isLoadingHistory: false };
+        let errorState = { ...state, error: action.payload.error, isSending: false, isLoadingHistory: false, isRetrying: false };
         if (action.payload.messageId) {
             // If an error occurred during streaming, update the placeholder message to reflect the error
             const updatedMessagesError = state.messages.map(msg =>
@@ -180,11 +185,13 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
             errorState.messages = updatedMessagesError;
         }
         return errorState;
+      case 'RETRY_START':
+        return { ...state, retryCount: action.payload.attempt, isRetrying: true, error: null, currentStep: `Retrying (attempt ${action.payload.attempt})...` };
       case 'APPEND_MESSAGE':
           // Used for system messages or action results injected externally
           return { ...state, messages: [...state.messages, action.payload] };
       case 'CLEAR_MESSAGES':
-        return { ...initialState, isLoadingHistory: false };
+        return { ...initialState, isLoadingHistory: false, retryCount: 0, isRetrying: false };
       default:
         return state;
     }
@@ -283,10 +290,11 @@ export const useAiRouterChat = ({
 
 
   // 2. Send Message and Handle Stream
-  const sendMessage = useCallback(async (
+  const sendMessageInternal = useCallback(async (
     content: string,
     fileIds: string[] = [],
-    imageIds: string[] = []
+    imageIds: string[] = [],
+    isRetry: boolean = false
   ) => {
     if (!sessionId || !accessToken || state.isSending) return;
 
@@ -310,7 +318,13 @@ export const useAiRouterChat = ({
       metadata: { isStreaming: true },
     };
 
-    dispatch({ type: 'SEND_START', payload: { userMessage, assistantPlaceholder } });
+    // Only add user message on first attempt, not on retries
+    if (!isRetry) {
+      dispatch({ type: 'SEND_START', payload: { userMessage, assistantPlaceholder } });
+    } else {
+      // On retry, just update the assistant message to show we're retrying
+      dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: 5, step: 'Retrying...' } });
+    }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -358,17 +372,35 @@ export const useAiRouterChat = ({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let lastDataTime = Date.now();
+      const STREAM_TIMEOUT_MS = 90000; // 90 seconds without data = timeout
+      const LONG_WAIT_WARNING_MS = 15000; // 15 seconds = show "still generating"
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Helper to check for timeout
+      const checkStreamTimeout = () => {
+        const elapsed = Date.now() - lastDataTime;
+        if (elapsed > LONG_WAIT_WARNING_MS && elapsed < STREAM_TIMEOUT_MS) {
+          dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: currentProgress, step: 'Still generating...' } });
+        } else if (elapsed > STREAM_TIMEOUT_MS) {
+          throw new Error('Stream timed out - no data received for 90 seconds');
+        }
+      };
 
-        buffer += decoder.decode(value, { stream: true });
-        // SSE messages MUST be separated by double newlines
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || ''; // Keep the last partial event in the buffer
+      // Set up timeout checker
+      const timeoutChecker = setInterval(checkStreamTimeout, 5000);
 
-        for (const event of events) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          lastDataTime = Date.now(); // Reset timeout on each data chunk
+          buffer += decoder.decode(value, { stream: true });
+          // SSE messages MUST be separated by double newlines
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || ''; // Keep the last partial event in the buffer
+
+          for (const event of events) {
           // Ensure it's a data event (ignore comments or empty lines)
           if (!event.startsWith('data: ')) continue;
 
@@ -414,14 +446,30 @@ export const useAiRouterChat = ({
                 break;
             }
           } catch (parseError) {
-            debugLog('Error parsing SSE data:', { parseError, event });
-            // Optionally dispatch a warning, but don't necessarily kill the stream for a single bad parse
+            // Distinguish between JSON parse errors and backend error events
+            if (event.includes('"type":"error"')) {
+              // This is a backend error event, extract and throw
+              try {
+                const errorData = JSON.parse(event.substring(6));
+                throw new Error(errorData.content || 'Stream error from backend');
+              } catch {
+                throw new Error('Backend error during stream');
+              }
+            } else {
+              // Genuine parse error - log but continue stream
+              debugLog('SSE parse error (malformed event):', { parseError, event });
+              console.warn('[Stream] Skipping malformed SSE event:', event.substring(0, 100));
+            }
           }
         }
       }
 
-      // If loop finishes successfully
-      dispatch({ type: 'STREAM_END', payload: { messageId: assistantMessageId } });
+        // If loop finishes successfully
+        dispatch({ type: 'STREAM_END', payload: { messageId: assistantMessageId } });
+      } finally {
+        // Clean up timeout checker
+        clearInterval(timeoutChecker);
+      }
 
     } catch (err) {
       debugLog('❌ CATCH BLOCK ERROR:', err);
@@ -433,13 +481,77 @@ export const useAiRouterChat = ({
       }
 
       const error = err instanceof Error ? err : new Error('An unknown error occurred during send/stream.');
-      // Dispatch error, linking it to the assistant message
-      dispatch({ type: 'ERROR', payload: { error, messageId: assistantMessageId } });
+
+      // Save partial content if stream failed mid-way
+      const lastMessage = state.messages.find(m => m.id === assistantMessageId);
+      if (lastMessage && lastMessage.content && lastMessage.content.length > 0) {
+        debugLog('💾 Preserving partial response:', { contentLength: lastMessage.content.length });
+        // Content is already in state, just mark as not streaming
+        dispatch({ type: 'STREAM_END', payload: { messageId: assistantMessageId } });
+      }
+
+      // Check if error is retriable (503, network errors, timeouts)
+      // Don't retry if we already have partial content
+      const hasPartialContent = lastMessage?.content || '';
+      const isRetriable = hasPartialContent.length === 0 && (
+        error.message.includes('503') ||
+        error.message.includes('overload') ||
+        error.message.includes('busy') ||
+        error.message.includes('network') ||
+        error.message.includes('timeout') ||
+        error.message.includes('fetch failed')
+      );
+
+      // Implement retry logic for retriable errors
+      const MAX_AUTO_RETRIES = 2;
+      const currentRetryCount = state.retryCount || 0;
+
+      if (isRetriable && currentRetryCount < MAX_AUTO_RETRIES) {
+        const nextAttempt = currentRetryCount + 1;
+        const retryDelay = nextAttempt === 1 ? 3000 : 7000; // 3s then 7s
+
+        debugLog(`⏳ Auto-retry attempt ${nextAttempt}/${MAX_AUTO_RETRIES} in ${retryDelay}ms`);
+        dispatch({ type: 'RETRY_START', payload: { attempt: nextAttempt } });
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+        // Retry the same message
+        try {
+          // Recursive call with same parameters, marking as retry
+          await sendMessageInternal(content, fileIds, imageIds, true);
+          return; // Success, exit
+        } catch (retryErr) {
+          // If retry also fails, fall through to error dispatch
+          debugLog('❌ Retry failed:', retryErr);
+        }
+      }
+
+      // Dispatch error with better messaging
+      let userFriendlyError = error;
+      if (error.message.includes('503') || error.message.includes('overload')) {
+        userFriendlyError = new Error('AI provider is experiencing high demand. Please try again in a moment.');
+      } else if (error.message.includes('network') || error.message.includes('fetch failed')) {
+        userFriendlyError = new Error('Connection issue detected. Please check your internet connection.');
+      } else if (error.message.includes('timeout')) {
+        userFriendlyError = new Error('Request timed out. The AI took too long to respond.');
+      }
+
+      dispatch({ type: 'ERROR', payload: { error: userFriendlyError, messageId: assistantMessageId } });
 
     } finally {
       abortControllerRef.current = null;
     }
-  }, [sessionId, accessToken, state.isSending, selectedModel, spaceId, onActionRequest, appendMessage]);
+  }, [sessionId, accessToken, state.isSending, state.retryCount, selectedModel, spaceId, onActionRequest, appendMessage]);
+
+  // Wrapper for external calls (without retry flag)
+  const sendMessage = useCallback(async (
+    content: string,
+    fileIds: string[] = [],
+    imageIds: string[] = []
+  ) => {
+    return sendMessageInternal(content, fileIds, imageIds, false);
+  }, [sendMessageInternal]);
 
   const clearMessages = useCallback(() => {
     if (state.isSending) return;

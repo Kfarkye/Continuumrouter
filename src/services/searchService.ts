@@ -186,6 +186,31 @@ export interface SearchIntent {
 export async function detectSearchIntent(query: string, previousMessages?: any[]): Promise<SearchIntent> {
   const normalizedQuery = query.toLowerCase().trim();
 
+  // Exclusion patterns - these should NOT trigger search
+  const exclusionPatterns = [
+    // Code-related queries (refactor, enhance, improve code)
+    /\b(refactor|optimize|improve|enhance|fix|debug|modify|update)\b.*\b(code|function|class|component|method|variable)\b/i,
+    /\b(add|create|write|generate)\b.*\b(function|class|component|interface|type)\b/i,
+    // Design/architecture discussions without time-sensitivity
+    /\b(design|architecture|pattern|structure|organize)\b/i,
+    // Code terminology
+    /\b(function|class|component|interface|type|const|let|var|import|export)\b/i,
+    // Generic improvement requests without explicit current-event keywords
+    /^(enhance|improve|refactor|optimize|can you|could you|please)\b/i,
+  ];
+
+  // Check exclusions first
+  for (const pattern of exclusionPatterns) {
+    if (pattern.test(normalizedQuery)) {
+      return {
+        requiresSearch: false,
+        confidence: 'low',
+        complexity: 'low',
+        reason: 'Code/design query - search not needed',
+      };
+    }
+  }
+
   const highConfidencePatterns = [
     /\b(today|latest|current|now|recent|breaking|live)\b/i,
     /\b(what is|who is|when did|where is|how much)\b.*\b(today|now|currently)\b/i,

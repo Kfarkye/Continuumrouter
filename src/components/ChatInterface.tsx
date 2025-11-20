@@ -420,6 +420,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     currentStep,
     error,
     clearMessages,
+    retryCount,
+    isRetrying,
   } = useAiRouterChat({
     sessionId,
     accessToken,
@@ -428,7 +430,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     onActionRequest: handleActionRequest,
     selectedModel,
     spaceId: selectedSpaceId,
-  });
+  }) as any;
 
   const {
     snippets,
@@ -839,31 +841,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       if (content.trim() && accessToken && agentiveSearchEnabled) {
         let shouldSearch = false;
 
+        // Skip auto-search for code content or very long messages
+        const hasCodeBlocks = /```[\s\S]*?```/.test(content);
+        const isVeryLong = content.length > 1000;
+        const hasFileAttachments = attachedFiles.length > 0 || imageAttachments.length > 0;
+
         if (searchMode === 'manual') {
           shouldSearch = true;
           triggerSource = 'manual';
         } else if (searchMode === 'auto') {
-          // Run the intent detection (Cascade Pattern implementation assumed in detectSearchIntent)
-          setLocalProcessingStep('detecting_intent');
-          console.log('[Agentive Search] Detecting search intent for query:', content);
-
-          // Pass previous messages for context-aware detection
-          const intent: SearchIntent = await detectSearchIntent(content, messages);
-          console.log('[Agentive Search] Intent detection result:', intent);
-
-          // Clear intent detection step quickly
-          // Use functional update to ensure we only clear if it hasn't changed
-          setLocalProcessingStep(currentStep => currentStep === 'detecting_intent' ? null : currentStep);
-
-          if (intent.requiresSearch) {
-            shouldSearch = true;
-            triggerSource = 'auto';
-            intentComplexity = intent.complexity || 'low';
-            console.log('[Agentive Search] Auto-triggering web search with complexity:', intentComplexity);
-            // Provide subtle UI feedback for auto-trigger
-            toast('Smart Search activated.', { icon: <Globe className='w-4 h-4 text-blue-500' />, duration: 1500 });
+          // Skip auto-search if message contains code, is very long, or has file attachments
+          if (hasCodeBlocks || isVeryLong || hasFileAttachments) {
+            console.log('[Agentive Search] Skipping auto-search: code blocks, long message, or file attachments detected');
+            shouldSearch = false;
           } else {
-            console.log('[Agentive Search] No search needed for this query');
+            // Run the intent detection (Cascade Pattern implementation assumed in detectSearchIntent)
+            setLocalProcessingStep('detecting_intent');
+            console.log('[Agentive Search] Detecting search intent for query:', content);
+
+            // Pass previous messages for context-aware detection
+            const intent: SearchIntent = await detectSearchIntent(content, messages);
+            console.log('[Agentive Search] Intent detection result:', intent);
+
+            // Clear intent detection step quickly
+            // Use functional update to ensure we only clear if it hasn't changed
+            setLocalProcessingStep(currentStep => currentStep === 'detecting_intent' ? null : currentStep);
+
+            if (intent.requiresSearch) {
+              shouldSearch = true;
+              triggerSource = 'auto';
+              intentComplexity = intent.complexity || 'low';
+              console.log('[Agentive Search] Auto-triggering web search with complexity:', intentComplexity);
+              // Provide subtle UI feedback for auto-trigger
+              toast('Smart Search activated.', { icon: <Globe className='w-4 h-4 text-blue-500' />, duration: 1500 });
+            } else {
+              console.log('[Agentive Search] No search needed for this query');
+            }
           }
         }
 
@@ -875,11 +888,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           try {
             const searchService = getSearchService(accessToken);
 
+            // Validate and truncate query length (max 800 characters)
+            const MAX_QUERY_LENGTH = 800;
+            let searchQuery = content;
+            if (searchQuery.length > MAX_QUERY_LENGTH) {
+              console.warn(`[Agentive Search] Query too long (${searchQuery.length} chars), truncating to ${MAX_QUERY_LENGTH}`);
+              searchQuery = searchQuery.substring(0, MAX_QUERY_LENGTH);
+              toast.info(`Query truncated to ${MAX_QUERY_LENGTH} characters for search`, { duration: 2000 });
+            }
+
             // Dynamic Model Selection: Use Pro if manually requested OR if auto-detected intent is complex.
             const searchModel = (triggerSource === 'manual' || intentComplexity === 'high') ? 'sonar-pro' : 'sonar';
 
             const searchResponse = await searchService.search({
-              query: content,
+              query: searchQuery,
               session_id: sessionId,
               conversation_id: sessionId,
               max_results: 5,
@@ -912,7 +934,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             }
           } catch (error) {
             console.error('Search error:', error);
-            toast.error(error instanceof Error ? error.message : 'Web search failed. Sending without web context.');
+            // Better error messaging - don't block the AI response
+            const errorMsg = error instanceof Error ? error.message : 'Web search unavailable';
+            if (errorMsg.includes('Quota exceeded')) {
+              toast.error('Search quota exceeded. Answering from knowledge base.', { duration: 3000 });
+            } else if (errorMsg.includes('unavailable') || errorMsg.includes('503')) {
+              toast('Web search temporarily unavailable. Answering from knowledge base.', { icon: '⚠️', duration: 3000 });
+            } else {
+              toast('Web search failed. Answering from knowledge base.', { icon: '⚠️', duration: 2500 });
+            }
+            // Clear search results on error
+            setSearchResults(null);
           }
         }
       }
@@ -1113,6 +1145,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   // *** NEW: Helper to map processing states to UI details ***
   const getProcessingDetails = () => {
+    // Show retry indicator if retrying
+    if (isRetrying && retryCount > 0) {
+      return {
+        step: `AI is busy, retrying... (attempt ${retryCount}/2)`,
+        modelName: null,
+        icon: <RefreshCw className="w-5 h-5 text-yellow-400 animate-spin" />,
+        progress: 25
+      };
+    }
     // Prioritize local steps (Search, Upload) as they happen before the main AI processing
     if (localProcessingStep) {
       switch (localProcessingStep) {
@@ -1457,11 +1498,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
 
         {/* Global Error Display */}
-        {error && !isLoadingHistory && (
+        {error && !isLoadingHistory && !isRetrying && (
           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full px-4">
             <div className="p-3 bg-red-500/10 backdrop-blur-md border border-red-500/20 rounded-xl flex items-center gap-3 shadow-lg" role="alert">
               <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-              <span className="text-sm text-red-200 font-medium">Connection Error: {error.message}</span>
+              <div className="flex-1">
+                <span className="text-sm text-red-200 font-medium">{error.message}</span>
+              </div>
             </div>
           </div>
         )}
