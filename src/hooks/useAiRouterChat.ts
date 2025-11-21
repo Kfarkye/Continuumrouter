@@ -3,6 +3,7 @@ import { ChatMessage, StoredFile, AiModelKey, SessionId, ConversationId } from '
 import { generateTempId } from '../lib/utils';
 import { MODEL_CONFIGS } from '../config/models';
 import { supabase } from '../lib/supabaseClient';
+import { updateConversationTitle } from '../utils/conversationNaming';
 
 // ============================================================================
 // Configuration & Environment
@@ -335,6 +336,13 @@ export const useAiRouterChat = ({
     // Only add user message on first attempt, not on retries
     if (!isRetry) {
       dispatch({ type: 'SEND_START', payload: { userMessage, assistantPlaceholder } });
+
+      // Auto-update conversation title based on first user message
+      if (userId && state.messages.filter(m => m.role === 'user').length === 0) {
+        updateConversationTitle(sessionId, content, supabase, userId).catch(err => {
+          console.error('Failed to update conversation title:', err);
+        });
+      }
     } else {
       // On retry, just update the assistant message to show we're retrying
       dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: 5, step: 'Retrying...' } });

@@ -293,30 +293,75 @@ const ConversationListModal: React.FC<{
   onSessionSelect: (sessionId: string) => void;
   onSessionDelete: (sessionId: string) => void;
   onSessionUpdate: (sessionId: string, title: string) => void;
-}> = ({ isOpen, onClose, sessions, selectedSessionId, onSessionSelect, onSessionDelete, onSessionUpdate }) => {
+  currentSpaceId: string | null;
+  spaces: AISpace[];
+}> = ({ isOpen, onClose, sessions, selectedSessionId, onSessionSelect, onSessionDelete, onSessionUpdate, currentSpaceId, spaces }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
-  const [sortBy, setSortBy] = useState<'recent' | 'messages'>('recent');
+  const [sortBy, setSortBy] = useState<'recent' | 'messages' | 'top_today' | 'top_week'>('recent');
+  const [hideEmpty, setHideEmpty] = useState(true); // Hide empty conversations by default
+  const [viewAllSpaces, setViewAllSpaces] = useState(false);
 
   const filteredSessions = useMemo(() => {
-    const filtered = sessions.filter(session =>
-      session.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let filtered = sessions.filter(session => {
+      const matchesSearch = session.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSpace = viewAllSpaces || session.project_id === currentSpaceId;
+      return matchesSearch && matchesSpace;
+    });
+
+    // Hide empty conversations if enabled
+    if (hideEmpty) {
+      filtered = filtered.filter(session => (session.messages?.length || 0) > 0);
+    }
 
     // Sort based on selected option
     return filtered.sort((a, b) => {
       if (sortBy === 'messages') {
         const aCount = a.messages?.length || 0;
         const bCount = b.messages?.length || 0;
-        return bCount - aCount; // Descending order (most messages first)
+        return bCount - aCount;
       }
-      // Default: sort by most recent (updated_at or created_at)
+      if (sortBy === 'top_today') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const aDate = new Date(a.updated_at || a.createdAt);
+        const bDate = new Date(b.updated_at || b.createdAt);
+        const aIsToday = aDate >= today;
+        const bIsToday = bDate >= today;
+        if (aIsToday && !bIsToday) return -1;
+        if (!aIsToday && bIsToday) return 1;
+        const aCount = a.messages?.length || 0;
+        const bCount = b.messages?.length || 0;
+        return bCount - aCount;
+      }
+      if (sortBy === 'top_week') {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const aDate = new Date(a.updated_at || a.createdAt);
+        const bDate = new Date(b.updated_at || b.createdAt);
+        const aIsThisWeek = aDate >= weekAgo;
+        const bIsThisWeek = bDate >= weekAgo;
+        if (aIsThisWeek && !bIsThisWeek) return -1;
+        if (!aIsThisWeek && bIsThisWeek) return 1;
+        const aCount = a.messages?.length || 0;
+        const bCount = b.messages?.length || 0;
+        return bCount - aCount;
+      }
+      // Default: sort by most recent
       const aDate = new Date(a.updated_at || a.createdAt).getTime();
       const bDate = new Date(b.updated_at || b.createdAt).getTime();
       return bDate - aDate;
     });
-  }, [sessions, searchQuery, sortBy]);
+  }, [sessions, searchQuery, sortBy, hideEmpty, viewAllSpaces, currentSpaceId]);
+
+  // Limit top results to 10
+  const displaySessions = useMemo(() => {
+    if (sortBy === 'top_today' || sortBy === 'top_week') {
+      return filteredSessions.slice(0, 10);
+    }
+    return filteredSessions;
+  }, [filteredSessions, sortBy]);
 
   const handleEdit = (session: ChatSession) => {
     setEditingId(session.id);
@@ -356,46 +401,87 @@ const ConversationListModal: React.FC<{
           />
         </div>
 
-        {/* Sort Options */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setSortBy('recent')}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              sortBy === 'recent'
-                ? 'bg-[#3b82f6] text-white'
-                : 'bg-[#27272a] text-[#a1a1aa] hover:bg-[#3f3f46]'
-            }`}
-          >
-            Most Recent
-          </button>
-          <button
-            onClick={() => setSortBy('messages')}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              sortBy === 'messages'
-                ? 'bg-[#3b82f6] text-white'
-                : 'bg-[#27272a] text-[#a1a1aa] hover:bg-[#3f3f46]'
-            }`}
-          >
-            Most Messages
-          </button>
+        {/* Filter Options */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#666666]">Filters</span>
+            <div className="flex items-center gap-2">
+              {spaces.length > 1 && (
+                <button
+                  onClick={() => setViewAllSpaces(!viewAllSpaces)}
+                  className="text-[11px] text-[#0070f3] hover:text-[#0761d1] transition-colors"
+                >
+                  {viewAllSpaces ? 'Current Space' : 'All Spaces'}
+                </button>
+              )}
+              <button
+                onClick={() => setHideEmpty(!hideEmpty)}
+                className="text-[11px] text-[#0070f3] hover:text-[#0761d1] transition-colors"
+              >
+                {hideEmpty ? 'Show Empty' : 'Hide Empty'}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setSortBy('recent')}
+              className={`px-3 py-2 rounded-md text-[12px] font-medium tracking-[-0.01em] transition-all ${
+                sortBy === 'recent'
+                  ? 'bg-[#0070f3] text-white'
+                  : 'bg-[#1a1a1a] text-[#888888] hover:bg-[#222222] hover:text-[#fafafa]'
+              }`}
+            >
+              Recent
+            </button>
+            <button
+              onClick={() => setSortBy('messages')}
+              className={`px-3 py-2 rounded-md text-[12px] font-medium tracking-[-0.01em] transition-all ${
+                sortBy === 'messages'
+                  ? 'bg-[#0070f3] text-white'
+                  : 'bg-[#1a1a1a] text-[#888888] hover:bg-[#222222] hover:text-[#fafafa]'
+              }`}
+            >
+              Most Active
+            </button>
+            <button
+              onClick={() => setSortBy('top_today')}
+              className={`px-3 py-2 rounded-md text-[12px] font-medium tracking-[-0.01em] transition-all ${
+                sortBy === 'top_today'
+                  ? 'bg-[#0070f3] text-white'
+                  : 'bg-[#1a1a1a] text-[#888888] hover:bg-[#222222] hover:text-[#fafafa]'
+              }`}
+            >
+              Top 10 Today
+            </button>
+            <button
+              onClick={() => setSortBy('top_week')}
+              className={`px-3 py-2 rounded-md text-[12px] font-medium tracking-[-0.01em] transition-all ${
+                sortBy === 'top_week'
+                  ? 'bg-[#0070f3] text-white'
+                  : 'bg-[#1a1a1a] text-[#888888] hover:bg-[#222222] hover:text-[#fafafa]'
+              }`}
+            >
+              Top 10 This Week
+            </button>
+          </div>
         </div>
 
         {/* Session List */}
-        <div className="space-y-2">
-          {filteredSessions.length === 0 ? (
+        <div className="space-y-1.5">
+          {displaySessions.length === 0 ? (
             <div className="text-center py-12 text-[#a1a1aa]">
               <MessageSquare size={48} className="mx-auto mb-3 opacity-20" />
               <p>No conversations found</p>
             </div>
           ) : (
-            filteredSessions.map(session => (
+            displaySessions.map(session => (
               <div
                 key={session.id}
                 className={`
-                  group flex items-center gap-3 p-3 rounded-lg border transition-all
-                  ${selectedSessionId === session.id 
-                    ? 'bg-[#27272a] border-[#3b82f6]' 
-                    : 'bg-[#09090b] border-white/5 hover:border-white/10 hover:bg-[#18181b]'}
+                  group flex items-center gap-2.5 p-2.5 rounded-lg border transition-all
+                  ${selectedSessionId === session.id
+                    ? 'bg-[#1a1a1a] border-[#0070f3]'
+                    : 'bg-[#0a0a0a] border-[#1a1a1a] hover:border-[#333333] hover:bg-[#111111]'}
                   cursor-pointer
                 `}
                 onClick={() => {
@@ -403,7 +489,7 @@ const ConversationListModal: React.FC<{
                   onClose();
                 }}
               >
-                <MessageSquare size={18} className="text-[#a1a1aa] flex-shrink-0" />
+                <MessageSquare size={16} strokeWidth={1.5} className="text-[#666666] flex-shrink-0" />
                 
                 <div className="flex-1 min-w-0">
                   {editingId === session.id ? (
@@ -421,11 +507,11 @@ const ConversationListModal: React.FC<{
                     />
                   ) : (
                     <>
-                      <div className="text-sm font-medium text-white truncate">
+                      <div className="text-[13px] font-medium text-[#fafafa] truncate tracking-[-0.01em]">
                         {session.title}
                       </div>
-                      <div className="text-xs text-[#a1a1aa] truncate">
-                        {new Date(session.updated_at).toLocaleDateString()} • {session.messages?.length || 0} messages
+                      <div className="text-[11px] text-[#666666] truncate">
+                        {new Date(session.updated_at).toLocaleDateString()} • {session.messages?.length || 0} msgs
                       </div>
                     </>
                   )}
@@ -438,7 +524,7 @@ const ConversationListModal: React.FC<{
                         e.stopPropagation();
                         handleSaveEdit(session.id);
                       }}
-                      className="p-1.5 hover:bg-[#27272a] rounded text-green-500"
+                      className="p-1.5 hover:bg-[#1a1a1a] rounded text-green-500"
                     >
                       <Check size={16} />
                     </button>
@@ -448,14 +534,14 @@ const ConversationListModal: React.FC<{
                         e.stopPropagation();
                         handleEdit(session);
                       }}
-                      className="p-1.5 hover:bg-[#27272a] rounded text-[#a1a1aa] hover:text-white"
+                      className="p-1.5 hover:bg-[#1a1a1a] rounded text-[#666666] hover:text-[#fafafa]"
                     >
                       <Edit2 size={16} />
                     </button>
                   )}
                   <button
                     onClick={(e) => handleDelete(session.id, e)}
-                    className="p-1.5 hover:bg-[#27272a] rounded text-[#a1a1aa] hover:text-red-500"
+                    className="p-1.5 hover:bg-[#1a1a1a] rounded text-[#666666] hover:text-red-500"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -866,6 +952,8 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         onSessionSelect={props.onSessionSelect}
         onSessionDelete={props.onSessionDelete}
         onSessionUpdate={props.onSessionUpdate}
+        currentSpaceId={props.currentSpaceId}
+        spaces={props.spaces}
       />
 
       <PromptLibraryModal

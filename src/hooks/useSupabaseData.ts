@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { ChatSession, StoredFile, SavedSchema, Project } from '../types';
 import { User } from '@supabase/supabase-js';
+import { generateDefaultTitle } from '../utils/conversationNaming';
 
 export const useSupabaseData = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -160,7 +161,7 @@ export const useSupabaseData = () => {
     const { data, error } = await supabase.from('ai_conversations').insert({
         user_id: user.id,
         session_id: newSessionId,
-        title: "New Code Session",
+        title: generateDefaultTitle(),
         project_id: currentProjectId,
     }).select().single();
 
