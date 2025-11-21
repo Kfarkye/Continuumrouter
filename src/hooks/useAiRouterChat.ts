@@ -67,6 +67,8 @@ interface SSEMessage {
     args?: unknown;
     agent?: string;
     intent?: string;
+    confidence?: number;
+    handoffSummary?: string;
 }
 
 // ============================================================================
@@ -486,17 +488,20 @@ export const useAiRouterChat = ({
                   console.group('🎭 Router Decision');
                   console.log('Agent:', data.agent);
                   console.log('Intent:', data.intent);
+                  console.log('Confidence:', data.confidence);
                   console.log('Model:', `${data.provider}/${data.model}`);
                   console.groupEnd();
                 }
 
                 // Add theater messages to the chat
                 if (data.agent && data.intent) {
+                  const confidencePercent = data.confidence ? Math.round(data.confidence * 100) : 0;
                   const theaterMessages = [
-                    `[System: Analysis complete. Intent: ${data.intent}]`,
+                    `[System: Analysis complete. Intent: ${data.intent}. Confidence: ${confidencePercent}%]`,
                     `[System: Routing to ${data.agent} (${data.model})...]`,
+                    data.handoffSummary ? `[Handoff: ${data.handoffSummary}]` : null,
                     `[Status: Connected]`
-                  ];
+                  ].filter(Boolean); // Remove null entries
 
                   theaterMessages.forEach((content) => {
                     dispatch({
@@ -504,7 +509,7 @@ export const useAiRouterChat = ({
                       payload: {
                         id: crypto.randomUUID(),
                         role: 'system',
-                        content,
+                        content: content as string,
                         created_at: new Date().toISOString(),
                       }
                     });

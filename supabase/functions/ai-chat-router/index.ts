@@ -74,6 +74,7 @@ const DEFAULT_MODEL_KEY = 'gemini';
 // Lane-specific persona system prompts
 const LANE_PERSONAS: Record<string, string> = {
   code: `You are a senior software engineer with expertise in TypeScript, React, and modern web architecture. Provide production-ready code with error handling. Focus on best practices, performance, and maintainability.`,
+  sports: `You are a sports betting analyst with expertise in statistical analysis and historical trends. Provide data-driven insights on betting lines, point spreads, over/under predictions, and game analysis. Focus on objective statistical analysis over speculation. Reference specific stats, historical patterns, and relevant trends when available.`,
   creative: `You are a creative writing assistant. Help with storytelling, character development, and narrative structure. Maintain consistent tone and focus on engaging, imaginative content.`,
   vision: `You are a visual analysis expert. Describe images thoroughly, noting important details, context, and actionable insights. Answer questions about visual content with precision.`,
   general: '', // No persona override for general conversations
@@ -85,6 +86,8 @@ interface TaskRouteResult {
   reasoning: string;
   agentName: string;
   intentDetected: string;
+  confidence: number; // 0.0-1.0 routing confidence
+  handoffSummary: string; // Brief task description for the agent
 }
 
 function decideRoute(messages: any[], imageCount: number, requestId: string): TaskRouteResult {
@@ -108,7 +111,9 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
       profile,
       reasoning: `Vision task with ${imageCount} images.`,
       agentName: 'Vision Analyst',
-      intentDetected: 'Image analysis request'
+      intentDetected: 'Image analysis request',
+      confidence: 1.0,
+      handoffSummary: `Analyze ${imageCount} image(s): ${userText.slice(0, 100)}...`
     };
     if (DEBUG_ROUTING) {
       log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
@@ -124,12 +129,15 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
   const codeWords = ['code', 'function', 'debug', 'implement', 'algorithm', 'error', 'bug', 'component', 'typescript', 'react'];
   if (codeWords.some(word => userText.includes(word))) {
     const profile = ROUTER_CONFIG['anthropic'];
+    const matchedWord = codeWords.find(word => userText.includes(word));
     const result = {
       taskType: 'code',
       profile,
       reasoning: 'Code-related task.',
       agentName: 'Code Assistant',
-      intentDetected: 'Programming task detected'
+      intentDetected: 'Programming task detected',
+      confidence: 0.95,
+      handoffSummary: `Programming task (${matchedWord}): ${userText.slice(0, 100)}...`
     };
     if (DEBUG_ROUTING) {
       log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
@@ -145,12 +153,15 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
   const sportsWords = ['odds', 'bet', 'betting', 'wager', 'spread', 'line', 'over', 'under', 'parlay', 'moneyline', 'nfl', 'nba', 'mlb', 'nhl', 'tnf', 'thursday night football', 'matchup', 'over/under', 'point spread', 'prop bet', 'futures', 'picks', 'cover'];
   if (sportsWords.some(word => userText.includes(word))) {
     const profile = ROUTER_CONFIG['gemini'];
+    const matchedWord = sportsWords.find(word => userText.includes(word));
     const result = {
       taskType: 'sports',
       profile,
       reasoning: 'Sports betting analysis task.',
       agentName: 'Sports Intelligence',
-      intentDetected: 'Sports betting analysis'
+      intentDetected: 'Sports betting analysis',
+      confidence: 0.9,
+      handoffSummary: `Sports analysis (${matchedWord}): ${userText.slice(0, 100)}...`
     };
     if (DEBUG_ROUTING) {
       log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
@@ -166,12 +177,15 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
   const creativeWords = ['story', 'poem', 'creative', 'narrative', 'character', 'fiction', 'novel', 'screenplay', 'protagonist', 'plot'];
   if (creativeWords.some(word => userText.includes(word))) {
     const profile = ROUTER_CONFIG['openai'];
+    const matchedWord = creativeWords.find(word => userText.includes(word));
     const result = {
       taskType: 'creative',
       profile,
       reasoning: 'Creative writing task.',
       agentName: 'Creative Writer',
-      intentDetected: 'Creative writing request'
+      intentDetected: 'Creative writing request',
+      confidence: 0.85,
+      handoffSummary: `Creative writing (${matchedWord}): ${userText.slice(0, 100)}...`
     };
     if (DEBUG_ROUTING) {
       log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
@@ -190,7 +204,9 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
     profile,
     reasoning: `General conversation. Routed to default (Gemini).`,
     agentName: 'General Assistant',
-    intentDetected: 'General conversation'
+    intentDetected: 'General conversation',
+    confidence: 0.7,
+    handoffSummary: `General query: ${userText.slice(0, 100)}...`
   };
   if (DEBUG_ROUTING) {
     log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
@@ -579,7 +595,7 @@ Deno.serve(async (req: Request) => {
 
     const images = await fetchAndEncodeImages(imageIds || [], user.id);
 
-    const { taskType, profile, reasoning, agentName, intentDetected } = decideRoute(messages, images.length, requestId);
+    const { taskType, profile, reasoning, agentName, intentDetected, confidence, handoffSummary } = decideRoute(messages, images.length, requestId);
     const { provider, model, limits } = profile;
 
     log("INFO", "[ROUTER] Decision Made", {
@@ -590,6 +606,8 @@ Deno.serve(async (req: Request) => {
       agentName,
       intentDetected,
       reasoning,
+      confidence,
+      handoffSummary,
       imageCount: images.length
     });
 
@@ -727,6 +745,8 @@ Deno.serve(async (req: Request) => {
             type: 'router_decision',
             agent: agentName,
             intent: intentDetected,
+            confidence,
+            handoffSummary,
             provider,
             model
           });
@@ -736,7 +756,7 @@ Deno.serve(async (req: Request) => {
             type: 'model_switch',
             provider,
             model,
-            metadata: { taskType, reasoning, agentName, intentDetected }
+            metadata: { taskType, reasoning, agentName, intentDetected, confidence, handoffSummary }
           });
 
           let apiStream: ReadableStream;
