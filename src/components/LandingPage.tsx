@@ -10,7 +10,7 @@ import { TypeWriter } from './TypeWriter';
 
 const BRAND_NAME = 'Continuum';
 
-// Marketing Copy (Updated)
+// Marketing Copy (Retaining the raw, high-impact messaging)
 const revolutionaryExamples = [
   {
     line1: 'Every Uber driver',
@@ -169,12 +169,12 @@ const LandingView: React.FC<{ onViewChange: (view: AuthView) => void, onDemoMode
     <div className="flex justify-center mb-8 lg:hidden">
         <Logo size="lg" />
     </div>
-    {/* Headline updated */}
+    {/* Headline Restored to Aspirational Tone */}
     <h1 className="text-5xl font-extrabold mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
-        Build your shit.
+        The future of building software.
     </h1>
     <p className="text-xl text-white/70 mb-10">
-        Stop waiting for someone else to build your idea.
+        Welcome to {BRAND_NAME}. Let's create something incredible.
     </p>
 
     <div className="flex gap-4 mb-6">
@@ -314,6 +314,8 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
  */
 const AuthPanel: React.FC<AuthPanelProps> = ({ onDemoMode }) => {
     const [view, setView] = useState<AuthView>('landing');
+    // Dynamically get the current year for the footer
+    const currentYear = new Date().getFullYear();
 
     const handleViewChange = useCallback((newView: AuthView) => {
         setView(newView);
@@ -342,7 +344,7 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onDemoMode }) => {
             </a>
             </div>
             <div className="text-xs text-white/30 mt-2">
-                © {new Date().getFullYear()} {BRAND_NAME} Corp.
+                © {currentYear} {BRAND_NAME} Corp.
             </div>
         </footer>
         </div>
