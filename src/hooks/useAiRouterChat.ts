@@ -457,6 +457,7 @@ export const useAiRouterChat = ({
       const decoder = new TextDecoder();
       let buffer = '';
       let lastDataTime = Date.now();
+      let currentProgress = 0;
       const STREAM_TIMEOUT_MS = 90000; // 90 seconds without data = timeout
       const LONG_WAIT_WARNING_MS = 15000; // 15 seconds = show "still generating"
 
@@ -506,6 +507,7 @@ export const useAiRouterChat = ({
 
               case 'progress':
                 if (data.progress !== undefined && data.step) {
+                    currentProgress = data.progress;
                     dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: data.progress, step: data.step } });
                 }
                 break;
