@@ -487,135 +487,173 @@ export const useAiRouterChat = ({
           console.log('[SEND MESSAGE] Received chunk:', chunk.substring(0, 100));
           buffer += chunk;
           // SSE messages MUST be separated by double newlines
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || ''; // Keep the last partial event in the buffer
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || ''; // Keep the last partial event in the buffer
 
-          for (const event of events) {
-          // Ensure it's a data event (ignore comments or empty lines)
-          if (!event.startsWith('data: ')) continue;
+          for (const message of messages) {
+            if (!message.trim()) continue;
 
-          try {
-            // Parse the JSON data payload (removing 'data: ')
-            const data: SSEMessage = JSON.parse(event.substring(6));
+            // Parse SSE format: "event: eventname\ndata: payload"
+            const lines = message.split('\n');
+            let eventType = 'message'; // default SSE event type
+            let dataPayload = '';
 
-            switch (data.type) {
-              case 'text':
-                if (data.content) {
-                    dispatch({ type: 'STREAM_CHUNK', payload: { content: data.content, messageId: assistantMessageId } });
-                }
-                break;
-
-              case 'progress':
-                if (data.progress !== undefined && data.step) {
-                    currentProgress = data.progress;
-                    dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: data.progress, step: data.step } });
-                }
-                break;
-
-              case 'router_decision':
-                // Debug log routing decision
-                if (import.meta.env.DEV) {
-                  console.group('🎭 Router Decision');
-                  console.log('Agent:', data.agent);
-                  console.log('Intent:', data.intent);
-                  console.log('Confidence:', data.confidence);
-                  console.log('Model:', `${data.provider}/${data.model}`);
-                  console.groupEnd();
-                }
-
-                // Add theater messages to the chat
-                if (data.agent && data.intent) {
-                  const confidencePercent = data.confidence ? Math.round(data.confidence * 100) : 0;
-                  const theaterMessages = [
-                    `[System: Analysis complete. Intent: ${data.intent}. Confidence: ${confidencePercent}%]`,
-                    `[System: Routing to ${data.agent} (${data.model})...]`,
-                    data.handoffSummary ? `[Handoff: ${data.handoffSummary}]` : null,
-                    `[Status: Connected]`
-                  ].filter(Boolean); // Remove null entries
-
-                  theaterMessages.forEach((content) => {
-                    dispatch({
-                      type: 'APPEND_MESSAGE',
-                      payload: {
-                        id: crypto.randomUUID(),
-                        role: 'system',
-                        content: content as string,
-                        created_at: new Date().toISOString(),
-                      }
-                    });
-                  });
-                }
-                break;
-
-              case 'model_switch':
-                 if (data.provider && data.model) {
-                    dispatch({ type: 'MODEL_SWITCH', payload: { messageId: assistantMessageId, provider: data.provider, model: data.model, metadata: data.metadata }});
-                 }
-                break;
-
-              case 'action_request':
-                if (onActionRequest && data.action) {
-                    // Handle AI-requested actions (e.g., save_schema) asynchronously
-                    onActionRequest(data.action, data.args, assistantMessageId, appendMessage).catch(err => {
-                        debugLog("❌ Action failed", err);
-                        // Optionally dispatch a system message if the action fails
-                    });
-                }
-                break;
-
-              case 'status':
-                // Backend status update (e.g., 'streaming', 'searching')
-                debugLog('📊 Status update:', data.state);
-                if (data.state === 'streaming') {
-                  dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: 5, step: 'Starting stream...' } });
-                }
-                break;
-
-              case 'keepalive':
-                // Connection keepalive - ignore silently
-                break;
-
-              case 'heartbeat':
-                // Periodic heartbeat - log in dev mode only
-                if (import.meta.env.DEV) {
-                  debugLog('💓 Heartbeat:', data.chunks);
-                }
-                break;
-
-              case 'warning':
-                // Backend warning (e.g., stream interrupted)
-                debugLog('⚠️ Warning:', data.content);
-                if (data.content) {
-                  dispatch({ type: 'STREAM_CHUNK', payload: { content: data.content, messageId: assistantMessageId } });
-                }
-                break;
-
-              case 'error':
-                // The backend signaled an error during the stream
-                throw new Error(data.content || 'Stream encountered an internal error');
-
-              case 'done':
-                // Stream finished naturally
-                break;
-            }
-          } catch (parseError) {
-            // Distinguish between JSON parse errors and backend error events
-            if (event.includes('"type":"error"')) {
-              // This is a backend error event, extract and throw
-              try {
-                const errorData = JSON.parse(event.substring(6));
-                throw new Error(errorData.content || 'Stream error from backend');
-              } catch {
-                throw new Error('Backend error during stream');
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                eventType = line.substring(7).trim();
+              } else if (line.startsWith('data: ')) {
+                dataPayload = line.substring(6);
               }
-            } else {
-              // Genuine parse error - log but continue stream
-              debugLog('SSE parse error (malformed event):', { parseError, event });
-              console.warn('[Stream] Skipping malformed SSE event:', event.substring(0, 100));
+            }
+
+            if (!dataPayload) continue;
+
+            try {
+              // Handle different event types
+              switch (eventType) {
+                case 'text':
+                  // Text chunks are sent as plain strings, not JSON
+                  dispatch({ type: 'STREAM_CHUNK', payload: { content: dataPayload, messageId: assistantMessageId } });
+                  break;
+
+                case 'metadata': {
+                  // Metadata is JSON
+                  const metadata = JSON.parse(dataPayload);
+                  console.log('[SEND MESSAGE] Metadata received:', metadata);
+                  break;
+                }
+
+                case 'done': {
+                  // Done event with usage info
+                  const doneData = JSON.parse(dataPayload);
+                  console.log('[SEND MESSAGE] Stream complete:', doneData);
+                  break;
+                }
+
+                case 'error': {
+                  // Error event
+                  const errorData = JSON.parse(dataPayload);
+                  throw new Error(errorData.content || 'Stream error occurred');
+                }
+
+                case 'debug': {
+                  // Debug events (only in debug mode)
+                  const debugData = JSON.parse(dataPayload);
+                  console.log('[DEBUG EVENT]', debugData.stage, debugData);
+                  break;
+                }
+
+                case 'message':
+                default: {
+                  // Legacy format fallback: data contains JSON with type field
+                  try {
+                    const data: SSEMessage = JSON.parse(dataPayload);
+
+                    switch (data.type) {
+                      case 'text':
+                        if (data.content) {
+                          dispatch({ type: 'STREAM_CHUNK', payload: { content: data.content, messageId: assistantMessageId } });
+                        }
+                        break;
+
+                      case 'progress':
+                        if (data.progress !== undefined && data.step) {
+                          currentProgress = data.progress;
+                          dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: data.progress, step: data.step } });
+                        }
+                        break;
+
+                      case 'router_decision':
+                        // Debug log routing decision
+                        if (import.meta.env.DEV) {
+                          console.group('🎭 Router Decision');
+                          console.log('Agent:', data.agent);
+                          console.log('Intent:', data.intent);
+                          console.log('Confidence:', data.confidence);
+                          console.log('Model:', `${data.provider}/${data.model}`);
+                          console.groupEnd();
+                        }
+
+                        // Add theater messages to the chat
+                        if (data.agent && data.intent) {
+                          const confidencePercent = data.confidence ? Math.round(data.confidence * 100) : 0;
+                          const theaterMessages = [
+                            `[System: Analysis complete. Intent: ${data.intent}. Confidence: ${confidencePercent}%]`,
+                            `[System: Routing to ${data.agent} (${data.model})...]`,
+                            data.handoffSummary ? `[Handoff: ${data.handoffSummary}]` : null,
+                            `[Status: Connected]`
+                          ].filter(Boolean);
+
+                          theaterMessages.forEach((content) => {
+                            dispatch({
+                              type: 'APPEND_MESSAGE',
+                              payload: {
+                                id: crypto.randomUUID(),
+                                role: 'system',
+                                content: content as string,
+                                created_at: new Date().toISOString(),
+                              }
+                            });
+                          });
+                        }
+                        break;
+
+                      case 'model_switch':
+                        if (data.provider && data.model) {
+                          dispatch({ type: 'MODEL_SWITCH', payload: { messageId: assistantMessageId, provider: data.provider, model: data.model, metadata: data.metadata }});
+                        }
+                        break;
+
+                      case 'action_request':
+                        if (onActionRequest && data.action) {
+                          onActionRequest(data.action, data.args, assistantMessageId, appendMessage).catch(err => {
+                            debugLog("❌ Action failed", err);
+                          });
+                        }
+                        break;
+
+                      case 'status':
+                        debugLog('📊 Status update:', data.state);
+                        if (data.state === 'streaming') {
+                          dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: 5, step: 'Starting stream...' } });
+                        }
+                        break;
+
+                      case 'keepalive':
+                        break;
+
+                      case 'heartbeat':
+                        if (import.meta.env.DEV) {
+                          debugLog('💓 Heartbeat:', data.chunks);
+                        }
+                        break;
+
+                      case 'warning':
+                        debugLog('⚠️ Warning:', data.content);
+                        if (data.content) {
+                          dispatch({ type: 'STREAM_CHUNK', payload: { content: data.content, messageId: assistantMessageId } });
+                        }
+                        break;
+
+                      case 'error':
+                        throw new Error(data.content || 'Stream encountered an internal error');
+
+                      case 'done':
+                        break;
+                    }
+                  } catch (parseError) {
+                    debugLog('SSE parse error (malformed legacy event):', { parseError, dataPayload: dataPayload.substring(0, 100) });
+                    console.warn('[Stream] Skipping malformed legacy SSE event');
+                  }
+                  break;
+                }
+              }
+            } catch (error) {
+              console.error('[SEND MESSAGE] Error processing SSE event:', error);
+              throw error;
             }
           }
         }
-      }
 
         // If loop finishes successfully
         dispatch({ type: 'STREAM_END', payload: { messageId: assistantMessageId } });
