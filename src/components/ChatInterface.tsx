@@ -72,11 +72,28 @@ const MAX_FILE_SIZE_MB = 50;
 const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const SEARCH_MAX_QUERY_LENGTH = 800;
 
+// UPDATED SUGGESTED PROMPTS
 const SUGGESTED_PROMPTS = [
-  { title: "I have an idea but can't code", prompt: "I have a business idea that needs software built. Can you help me understand how to start turning my concept into a real product?" },
-  { title: "Help me build something real", prompt: "I want to build a production-ready application. Walk me through the process from initial concept to deployed product." },
-  { title: "Walk me through deployment", prompt: "I have code that works locally but I need help deploying it to production. What's the best approach?" },
-  { title: "Turn this into production code", prompt: "I have a prototype/concept that works but it needs to become production-grade software. Help me architect this properly." }
+  {
+    title: "You already know more than the software.",
+    prompt: "Explain what a domain expert is and why someone with 10 years in their field understands the problem better than any development team ever could.",
+  },
+  {
+    title: "It was built by people who don't do your job.",
+    prompt: "Break down the fundamental disconnect: developers build what they can build, not what you actually need. Why does this gap exist and why has it never been fixed?",
+  },
+  {
+    title: "The barrier just collapsed.",
+    prompt: "For the first time in history, the person who sees the problem can build the solution. Explain what changes when domain experts don't need permission from technical gatekeepers anymore.",
+  },
+  {
+    title: "Zero to production. Six months.",
+    prompt: "Walk me through the exact path from 'I don't know what a console is' to 'I have real users.' No fluff. What were the actual stages?",
+  },
+  {
+    title: "This is what you'll ship.",
+    prompt: "I know my industry's problems. I have no coding background. Tell me exactly what it takes to build, deploy, and own my own product. What does that reality actually look like?",
+  },
 ];
 
 type SearchMode = 'auto' | 'manual' | 'off';
