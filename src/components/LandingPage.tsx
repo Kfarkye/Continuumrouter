@@ -10,31 +10,31 @@ import { TypeWriter } from './TypeWriter';
 
 const BRAND_NAME = 'Continuum';
 
-// Marketing Copy (Steve Jobs Inspired)
+// Marketing Copy (Updated)
 const revolutionaryExamples = [
   {
-    line1: 'The power to build the incredible.',
-    line2: 'The clarity to understand every line.',
+    line1: 'Every Uber driver',
+    line2: 'knows what drivers actually need',
     color: 'text-blue-400',
   },
   {
-    line1: "The future isn't writing code.",
-    line2: "It's bringing ideas to life.",
+    line1: 'I see the problem every day',
+    line2: "but I can't build it",
     color: 'text-purple-400',
   },
   {
-    line1: 'Intelligence Amplified.',
-    line2: 'AI architecture meets human ingenuity.',
+    line1: 'Tired of trash software',
+    line2: "that doesn't get my business",
     color: 'text-teal-400',
   },
   {
-    line1: 'Incredibly powerful. Beautifully transparent.',
-    line2: 'Unmistakably yours.',
+    line1: 'I got the idea and hustle',
+    line2: 'just need to build it',
     color: 'text-pink-400',
   },
   {
-    line1: 'Your vision. Your software.',
-    line2: 'Stop waiting. Start creating.',
+    line1: 'Stop waiting for a developer',
+    line2: 'build your own shit',
     color: 'text-orange-400',
   },
 ];
@@ -169,12 +169,12 @@ const LandingView: React.FC<{ onViewChange: (view: AuthView) => void, onDemoMode
     <div className="flex justify-center mb-8 lg:hidden">
         <Logo size="lg" />
     </div>
-    {/* Headline updated for maximum impact with gradient */}
+    {/* Headline updated */}
     <h1 className="text-5xl font-extrabold mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
-        The future of building software.
+        Build your shit.
     </h1>
     <p className="text-xl text-white/70 mb-10">
-        Welcome to {BRAND_NAME}. Let's create something incredible.
+        Stop waiting for someone else to build your idea.
     </p>
 
     <div className="flex gap-4 mb-6">
