@@ -45,8 +45,15 @@ const revolutionaryExamples = [
 
 const Logo: React.FC<{ size?: 'sm' | 'lg' }> = ({ size = 'sm' }) => (
   // Using backdrop-blur and bg-opacity for a refined "glass" effect
-  <div className={`rounded-xl bg-white/5 backdrop-blur-md flex items-center justify-center shadow-lg ${size === 'sm' ? 'w-10 h-10' : 'w-16 h-16'}`}>
-    <Command className={`text-white/90 ${size === 'sm' ? 'w-5 h-5' : 'w-8 h-8'}`} strokeWidth={1.5} />
+  <div
+    className={`rounded-xl bg-white/5 backdrop-blur-md flex items-center justify-center shadow-lg ${
+      size === 'sm' ? 'w-10 h-10' : 'w-16 h-16'
+    }`}
+  >
+    <Command
+      className={`text-white/90 ${size === 'sm' ? 'w-5 h-5' : 'w-8 h-8'}`}
+      strokeWidth={1.5}
+    />
   </div>
 );
 
@@ -57,15 +64,22 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'primary', loading = false, children, className = '', ...props }, ref) => {
-    const baseStyles = "flex items-center justify-center py-3.5 px-6 min-h-[52px] font-semibold rounded-full transition-all duration-200 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
-    
-    const variantStyles = variant === 'primary'
-      ? 'bg-blue-600 hover:bg-blue-700 text-white focus-visible:ring-blue-500'
-      // Secondary style uses slight backdrop blur for a premium feel
-      : 'bg-white/10 hover:bg-white/20 text-white focus-visible:ring-white/50 backdrop-blur-sm';
+    const baseStyles =
+      'flex items-center justify-center py-3.5 px-6 min-h-[52px] font-semibold rounded-full transition-all duration-200 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black';
+
+    const variantStyles =
+      variant === 'primary'
+        ? 'bg-blue-600 hover:bg-blue-700 text-white focus-visible:ring-blue-500'
+        : // Secondary style uses slight backdrop blur for a premium feel
+          'bg-white/10 hover:bg-white/20 text-white focus-visible:ring-white/50 backdrop-blur-sm';
 
     return (
-      <button ref={ref} className={`${baseStyles} ${variantStyles} ${className}`} disabled={loading || props.disabled} {...props}>
+      <button
+        ref={ref}
+        className={`${baseStyles} ${variantStyles} ${className}`}
+        disabled={loading || props.disabled}
+        {...props}
+      >
         {loading ? <Loader2 className="w-5 h-5 animate-spin" aria-label="Loading" /> : children}
       </button>
     );
@@ -85,7 +99,10 @@ const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputEl
 );
 Input.displayName = 'Input';
 
-const Alert: React.FC<{ type: 'error' | 'success', message: string }> = ({ type, message }) => (
+const Alert: React.FC<{ type: 'error' | 'success'; message: string }> = ({
+  type,
+  message,
+}) => (
   <div
     role="alert"
     className={`p-4 border rounded-lg text-sm transition-opacity duration-200 ${
@@ -127,10 +144,7 @@ const ShowcasePanel: React.FC = () => {
         <div className="max-w-lg text-4xl font-medium tracking-tight">
           <TypeWriter
             key={key}
-            lines={[
-              currentExample.line1,
-              currentExample.line2,
-            ]}
+            lines={[currentExample.line1, currentExample.line2]}
             // Dynamic colors for the first line
             colors={[currentExample.color, 'text-white/80']}
             typingSpeed={45}
@@ -145,9 +159,7 @@ const ShowcasePanel: React.FC = () => {
       </main>
 
       {/* Footer inspired by Apple */}
-      <footer className="text-sm text-white/40">
-        Designed by {BRAND_NAME} in California.
-      </footer>
+      <footer className="text-sm text-white/40">Designed by {BRAND_NAME} in California.</footer>
     </div>
   );
 };
@@ -157,24 +169,28 @@ const ShowcasePanel: React.FC = () => {
 // ============================================================================
 
 interface AuthPanelProps {
-    onDemoMode?: () => void;
+  onDemoMode?: () => void;
 }
 
 type AuthView = 'landing' | 'login' | 'signup';
 
 // Sub-component: Landing View
-const LandingView: React.FC<{ onViewChange: (view: AuthView) => void, onDemoMode?: () => void }> = ({ onViewChange, onDemoMode }) => (
+const LandingView: React.FC<{
+  onViewChange: (view: AuthView) => void;
+  onDemoMode?: () => void;
+}> = ({ onViewChange, onDemoMode }) => (
   <div className="w-full max-w-md text-center animate-fadeIn px-4">
     {/* Mobile Logo (Hidden on lg screens) */}
     <div className="flex justify-center mb-8 lg:hidden">
-        <Logo size="lg" />
+      <Logo size="lg" />
     </div>
     {/* Headline Restored to Aspirational Tone */}
     <h1 className="text-5xl font-extrabold mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
-        The future of building software.
+      The future of building software.
     </h1>
+    {/* Core promise line */}
     <p className="text-xl text-white/70 mb-10">
-        Welcome to {BRAND_NAME}. Let's create something incredible.
+      Ship YOUR product + understand YOUR codebase.
     </p>
 
     <div className="flex gap-4 mb-6">
@@ -187,22 +203,28 @@ const LandingView: React.FC<{ onViewChange: (view: AuthView) => void, onDemoMode
     </div>
 
     {onDemoMode && (
-        <button
+      <button
         onClick={onDemoMode}
         className="text-sm text-white/60 hover:text-white hover:underline transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded px-2 py-1"
-        >
+      >
         Try the interactive demo
-        </button>
+      </button>
     )}
   </div>
 );
 
 // Sub-component: Auth Form (Handles Login and Signup)
-const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthView) => void }> = ({ view, onViewChange }) => {
+const AuthForm: React.FC<{ view: 'login' | 'signup'; onViewChange: (view: AuthView) => void }> = ({
+  view,
+  onViewChange,
+}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'error' | 'success'; content: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: 'error' | 'success';
+    content: string;
+  } | null>(null);
 
   const isSignUp = view === 'signup';
 
@@ -216,17 +238,26 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
         const { error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) throw signUpError;
         // A more inspiring success message
-        setMessage({ type: 'success', content: 'Incredible. Check your email to confirm and begin.' });
+        setMessage({
+          type: 'success',
+          content: 'Incredible. Check your email to confirm and begin.',
+        });
         // Clear form on success
         setEmail('');
         setPassword('');
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
         if (signInError) throw signInError;
         // Note: Actual redirection upon successful login is typically handled by a global auth state listener (e.g., onAuthStateChange).
       }
     } catch (err: any) {
-      setMessage({ type: 'error', content: err.message || 'Authentication failed. Please try again.' });
+      setMessage({
+        type: 'error',
+        content: err.message || 'Authentication failed. Please try again.',
+      });
     } finally {
       // Ensure loading is always reset unless a successful login occurred (handled by redirect)
       setLoading(false);
@@ -235,24 +266,28 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
 
   // Navigation handlers
   const handleBackClick = useCallback(() => onViewChange('landing'), [onViewChange]);
-  
+
   const handleSwitchView = useCallback(() => {
-      // Clear state when switching views
-      setMessage(null);
-      setEmail('');
-      setPassword('');
-      onViewChange(isSignUp ? 'login' : 'signup');
+    // Clear state when switching views
+    setMessage(null);
+    setEmail('');
+    setPassword('');
+    onViewChange(isSignUp ? 'login' : 'signup');
   }, [isSignUp, onViewChange]);
 
   return (
     <div className="w-full max-w-sm animate-fadeIn relative">
-        {/* Dedicated Back Button for better UX */}
-        <button onClick={handleBackClick} className="absolute top-0 left-0 text-white/50 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded-full p-2 hover:bg-white/5" aria-label="Go back to landing page">
-            <ArrowLeft className="w-6 h-6" />
-        </button>
+      {/* Dedicated Back Button for better UX */}
+      <button
+        onClick={handleBackClick}
+        className="absolute top-0 left-0 text-white/50 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded-full p-2 hover:bg-white/5"
+        aria-label="Go back to landing page"
+      >
+        <ArrowLeft className="w-6 h-6" />
+      </button>
 
       <div className="flex flex-col items-center justify-center mb-8 pt-8">
-         <Logo size="lg" />
+        <Logo size="lg" />
         <h1 className="text-3xl font-bold tracking-tight mt-6">
           {isSignUp ? 'Create Your Vision' : 'Welcome Back'}
         </h1>
@@ -260,8 +295,10 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-            <label htmlFor="email" className="sr-only">Email address</label>
-            <Input
+          <label htmlFor="email" className="sr-only">
+            Email address
+          </label>
+          <Input
             id="email"
             type="email"
             value={email}
@@ -269,11 +306,13 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
             placeholder="Email address"
             required
             autoComplete="email"
-            />
+          />
         </div>
         <div>
-            <label htmlFor="password" className="sr-only">Password</label>
-            <Input
+          <label htmlFor="password" className="sr-only">
+            Password
+          </label>
+          <Input
             id="password"
             type="password"
             value={password}
@@ -282,8 +321,8 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
             required
             minLength={6}
             // Crucial for security and browser password manager compatibility
-            autoComplete={isSignUp ? "new-password" : "current-password"}
-            />
+            autoComplete={isSignUp ? 'new-password' : 'current-password'}
+          />
         </div>
 
         {message && <Alert type={message.type} message={message.content} />}
@@ -313,43 +352,43 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
  * The right panel managing the authentication views.
  */
 const AuthPanel: React.FC<AuthPanelProps> = ({ onDemoMode }) => {
-    const [view, setView] = useState<AuthView>('landing');
-    // Dynamically get the current year for the footer
-    const currentYear = new Date().getFullYear();
+  const [view, setView] = useState<AuthView>('landing');
+  // Dynamically get the current year for the footer
+  const currentYear = new Date().getFullYear();
 
-    const handleViewChange = useCallback((newView: AuthView) => {
-        setView(newView);
-    }, []);
+  const handleViewChange = useCallback((newView: AuthView) => {
+    setView(newView);
+  }, []);
 
-    return (
-        // Ensure the panel is scrollable on smaller screens if needed
-        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black relative overflow-y-auto">
-        <main className="flex-1 flex items-center justify-center w-full">
-            {view === 'landing' ? (
-                <LandingView onViewChange={handleViewChange} onDemoMode={onDemoMode} />
-            ) : (
-                <AuthForm view={view} onViewChange={handleViewChange} />
-            )}
-        </main>
+  return (
+    // Ensure the panel is scrollable on smaller screens if needed
+    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black relative overflow-y-auto">
+      <main className="flex-1 flex items-center justify-center w-full">
+        {view === 'landing' ? (
+          <LandingView onViewChange={handleViewChange} onDemoMode={onDemoMode} />
+        ) : (
+          <AuthForm view={view} onViewChange={handleViewChange} />
+        )}
+      </main>
 
-        {/* Footer */}
-        <footer className="pt-8 pb-4 text-center w-full">
-            <div className="text-xs text-white/40 flex items-center justify-center gap-4">
-            <a href="/terms" className="hover:text-white/70 transition-colors duration-200">
-                Terms of use
-            </a>
-            <span className="text-white/20">|</span>
-            <a href="/privacy" className="hover:text-white/70 transition-colors duration-200">
-                Privacy policy
-            </a>
-            </div>
-            <div className="text-xs text-white/30 mt-2">
-                © {currentYear} {BRAND_NAME} Corp.
-            </div>
-        </footer>
+      {/* Footer */}
+      <footer className="pt-8 pb-4 text-center w-full">
+        <div className="text-xs text-white/40 flex items-center justify-center gap-4">
+          <a href="/terms" className="hover:text-white/70 transition-colors duration-200">
+            Terms of use
+          </a>
+          <span className="text-white/20">|</span>
+          <a href="/privacy" className="hover:text-white/70 transition-colors duration-200">
+            Privacy policy
+          </a>
         </div>
-    );
-}
+        <div className="text-xs text-white/30 mt-2">
+          © {currentYear} {BRAND_NAME} Corp.
+        </div>
+      </footer>
+    </div>
+  );
+};
 
 // ============================================================================
 // Main Landing Page Component
