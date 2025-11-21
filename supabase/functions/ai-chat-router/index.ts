@@ -9,9 +9,9 @@ const CONFIG = {
   API_TIMEOUT_MS: 180000,
   MAX_TOKENS_DEFAULT: 6000,
   IMAGE_BUCKET_NAME: 'chat-uploads',
-  SEARCH_TIMEOUT_MS: 3000, // 3s timeout for search context
-  MOBILE_STREAM_TIMEOUT_MS: 120000, // 2min for mobile
-  CHUNK_READ_TIMEOUT_MS: 20000 // 20s between chunks (reduced from 30s)
+  SEARCH_TIMEOUT_MS: 3000,
+  MOBILE_STREAM_TIMEOUT_MS: 120000,
+  CHUNK_READ_TIMEOUT_MS: 20000
 } as const;
 
 if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -74,13 +74,12 @@ const ROUTER_CONFIG: Record<string, RouteProfile> = {
 
 const DEFAULT_MODEL_KEY = 'gemini';
 
-// Lane-specific persona system prompts
 const LANE_PERSONAS: Record<string, string> = {
   code: `You are a senior software engineer with expertise in TypeScript, React, and modern web architecture. Provide production-ready code with error handling. Focus on best practices, performance, and maintainability.`,
   sports: `You are a sports betting analyst with expertise in statistical analysis and historical trends. Provide data-driven insights on betting lines, point spreads, over/under predictions, and game analysis. Focus on objective statistical analysis over speculation. Reference specific stats, historical patterns, and relevant trends when available.`,
   creative: `You are a creative writing assistant. Help with storytelling, character development, and narrative structure. Maintain consistent tone and focus on engaging, imaginative content.`,
   vision: `You are a visual analysis expert. Describe images thoroughly, noting important details, context, and actionable insights. Answer questions about visual content with precision.`,
-  general: '', // No persona override for general conversations
+  general: '',
 };
 
 interface TaskRouteResult {
@@ -89,8 +88,8 @@ interface TaskRouteResult {
   reasoning: string;
   agentName: string;
   intentDetected: string;
-  confidence: number; // 0.0-1.0 routing confidence
-  handoffSummary: string; // Brief task description for the agent
+  confidence: number;
+  handoffSummary: string;
 }
 
 function decideRoute(messages: any[], imageCount: number, requestId: string): TaskRouteResult {
@@ -102,149 +101,93 @@ function decideRoute(messages: any[], imageCount: number, requestId: string): Ta
   if (DEBUG_ROUTING) {
     log("DEBUG", "[ROUTER-CLASSIFY] Analyzing message", {
       requestId,
-      messageLength: userText.length,
-      imageCount
+      messagePreview: userText.substring(0, 100),
+      hasImages: imageCount > 0
     });
   }
 
   if (imageCount > 0) {
-    const profile = ROUTER_CONFIG['anthropic'];
-    const result = {
+    const profile = ROUTER_CONFIG['gemini'];
+    return {
       taskType: 'vision',
       profile,
-      reasoning: `Vision task with ${imageCount} images.`,
-      agentName: 'Vision Analyst',
-      intentDetected: 'Image analysis request',
-      confidence: 1.0,
-      handoffSummary: `Analyze ${imageCount} image(s): ${userText.slice(0, 100)}...`
+      reasoning: `Image analysis required - routing to Gemini Vision`,
+      agentName: 'Vision Specialist',
+      intentDetected: 'image_analysis',
+      confidence: 0.95,
+      handoffSummary: `Analyzing ${imageCount} image${imageCount > 1 ? 's' : ''} with advanced vision capabilities`
     };
-    if (DEBUG_ROUTING) {
-      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
-        requestId,
-        taskType: result.taskType,
-        agentName: result.agentName,
-        trigger: 'image attachment'
-      });
-    }
-    return result;
   }
 
-  const codeWords = ['code', 'function', 'debug', 'implement', 'algorithm', 'error', 'bug', 'component', 'typescript', 'react'];
-  if (codeWords.some(word => userText.includes(word))) {
+  const codePatterns = [
+    /\bcode\b/i, /\bfunction\b/i, /\bapi\b/i, /\bdebug\b/i, /\bbug\b/i,
+    /\berror\b/i, /\bfix\b/i, /\bimplement\b/i, /\brefactor\b/i, /\breact\b/i,
+    /\btypescript\b/i, /\bjavascript\b/i, /\bcomponent\b/i, /\bhook\b/i,
+    /\balgorithm\b/i, /\bdata structure\b/i, /\boptimiz/i
+  ];
+
+  const codeScore = codePatterns.filter(p => p.test(userText)).length;
+
+  if (codeScore >= 2) {
     const profile = ROUTER_CONFIG['anthropic'];
-    const matchedWord = codeWords.find(word => userText.includes(word));
-    const result = {
+    return {
       taskType: 'code',
       profile,
-      reasoning: 'Code-related task.',
-      agentName: 'Code Assistant',
-      intentDetected: 'Programming task detected',
-      confidence: 0.95,
-      handoffSummary: `Programming task (${matchedWord}): ${userText.slice(0, 100)}...`
+      reasoning: `Code-related query detected (score: ${codeScore}) - routing to Claude`,
+      agentName: 'Senior Engineer',
+      intentDetected: 'technical_implementation',
+      confidence: Math.min(0.7 + (codeScore * 0.1), 0.95),
+      handoffSummary: `Handling technical implementation task with production-grade code standards`
     };
-    if (DEBUG_ROUTING) {
-      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
-        requestId,
-        taskType: result.taskType,
-        agentName: result.agentName,
-        trigger: 'code keywords'
-      });
-    }
-    return result;
   }
 
-  const sportsWords = ['odds', 'bet', 'betting', 'wager', 'spread', 'line', 'over', 'under', 'parlay', 'moneyline', 'nfl', 'nba', 'mlb', 'nhl', 'tnf', 'thursday night football', 'matchup', 'over/under', 'point spread', 'prop bet', 'futures', 'picks', 'cover'];
-  if (sportsWords.some(word => userText.includes(word))) {
-    const profile = ROUTER_CONFIG['gemini'];
-    const matchedWord = sportsWords.find(word => userText.includes(word));
-    const result = {
-      taskType: 'sports',
-      profile,
-      reasoning: 'Sports betting analysis task.',
-      agentName: 'Sports Intelligence',
-      intentDetected: 'Sports betting analysis',
-      confidence: 0.9,
-      handoffSummary: `Sports analysis (${matchedWord}): ${userText.slice(0, 100)}...`
-    };
-    if (DEBUG_ROUTING) {
-      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
-        requestId,
-        taskType: result.taskType,
-        agentName: result.agentName,
-        trigger: 'sports keywords'
-      });
-    }
-    return result;
-  }
+  const creativePatterns = [
+    /\bwrite\b.*\bstory\b/i, /\bcreate\b.*\bcharacter\b/i, /\bplot\b/i,
+    /\bnarrative\b/i, /\bscript\b/i, /\bdialogue\b/i, /\bnovel\b/i,
+    /\bpoem\b/i, /\bcreative writing\b/i
+  ];
 
-  const creativeWords = ['story', 'poem', 'creative', 'narrative', 'character', 'fiction', 'novel', 'screenplay', 'protagonist', 'plot'];
-  if (creativeWords.some(word => userText.includes(word))) {
+  const creativeScore = creativePatterns.filter(p => p.test(userText)).length;
+
+  if (creativeScore >= 1) {
     const profile = ROUTER_CONFIG['openai'];
-    const matchedWord = creativeWords.find(word => userText.includes(word));
-    const result = {
+    return {
       taskType: 'creative',
       profile,
-      reasoning: 'Creative writing task.',
-      agentName: 'Creative Writer',
-      intentDetected: 'Creative writing request',
-      confidence: 0.85,
-      handoffSummary: `Creative writing (${matchedWord}): ${userText.slice(0, 100)}...`
+      reasoning: `Creative writing detected - routing to GPT-4`,
+      agentName: 'Creative Assistant',
+      intentDetected: 'creative_writing',
+      confidence: 0.8,
+      handoffSummary: `Crafting creative content with focus on narrative and character development`
     };
-    if (DEBUG_ROUTING) {
-      log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
-        requestId,
-        taskType: result.taskType,
-        agentName: result.agentName,
-        trigger: 'creative keywords'
-      });
-    }
-    return result;
   }
 
   const profile = ROUTER_CONFIG[DEFAULT_MODEL_KEY];
-  const result = {
+  return {
     taskType: 'general',
     profile,
-    reasoning: `General conversation. Routed to default (Gemini).`,
+    reasoning: 'General conversation - using default model',
     agentName: 'General Assistant',
-    intentDetected: 'General conversation',
-    confidence: 0.7,
-    handoffSummary: `General query: ${userText.slice(0, 100)}...`
+    intentDetected: 'general_query',
+    confidence: 0.6,
+    handoffSummary: 'Handling general query with balanced capabilities'
   };
-  if (DEBUG_ROUTING) {
-    log("DEBUG", "[ROUTER-CLASSIFY] Matched route", {
-      requestId,
-      taskType: result.taskType,
-      agentName: result.agentName,
-      trigger: 'fallback'
-    });
-  }
-  return result;
 }
 
-async function processStream(response: Response, parser: (data: string) => string | null, provider: string): Promise<ReadableStream> {
-  if (!response.body) throw new Error(`No response body from ${provider} API.`);
-
-  const reader = response.body.getReader();
+function processStream(response: Response, parser: (data: string) => string | null, providerName: string): ReadableStream {
+  const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
   return new ReadableStream({
     async pull(controller) {
-      while (true) {
+      try {
         const { done, value } = await reader.read();
 
         if (done) {
           if (buffer.trim()) {
-            try {
-              const data = buffer.trim().startsWith('data: ') ? buffer.trim().slice(6).trim() : buffer.trim();
-              if (data !== '[DONE]') {
-                const chunk = parser(data);
-                if (chunk) controller.enqueue(encoder.encode(chunk));
-              }
-            } catch (e) {
-              log("WARN", `Failed to parse final buffer from ${provider}`, { error: (e as Error).message });
-            }
+            const text = parser(buffer);
+            if (text) controller.enqueue(encoder.encode(text));
           }
           controller.close();
           return;
@@ -255,31 +198,18 @@ async function processStream(response: Response, parser: (data: string) => strin
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line.trim()) continue;
-
-          let data = line;
           if (line.startsWith('data: ')) {
-            data = line.slice(6).trim();
-          } else {
-            continue;
-          }
-
-          if (data === '[DONE]') continue;
-
-          try {
-            if (provider === 'Gemini') {
-              log("DEBUG", `[GEMINI-STREAM] Raw data chunk received`, { dataLength: data.length, dataPreview: data.substring(0, 200) });
-            }
-            const chunk = parser(data);
-            if (chunk) {
-              controller.enqueue(encoder.encode(chunk));
-            } else if (provider === 'Gemini') {
-              log("WARN", `[GEMINI-STREAM] Parser returned null for chunk`);
-            }
-          } catch (e) {
-            log("ERROR", `Failed to parse chunk from ${provider}`, { error: (e as Error).message, data: data.substring(0, 200) });
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            const text = parser(data);
+            if (text) controller.enqueue(encoder.encode(text));
           }
         }
+      } catch (error) {
+        log("ERROR", `[${providerName}-STREAM] Error processing stream`, {
+          error: (error as Error).message
+        });
+        controller.error(error);
       }
     }
   });
@@ -297,10 +227,10 @@ async function callAnthropicAPI(model: string, messages: any[], systemPrompt?: s
     },
     body: JSON.stringify({
       model,
-      max_tokens: CONFIG.MAX_TOKENS_DEFAULT,
       messages,
+      max_tokens: CONFIG.MAX_TOKENS_DEFAULT,
       stream: true,
-      system: systemPrompt
+      ...(systemPrompt && { system: systemPrompt })
     }),
     signal: AbortSignal.timeout(CONFIG.API_TIMEOUT_MS)
   });
@@ -311,11 +241,15 @@ async function callAnthropicAPI(model: string, messages: any[], systemPrompt?: s
   }
 
   const parser = (data: string): string | null => {
-    const parsed = JSON.parse(data);
-    if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta' && parsed.delta?.text) {
-      return parsed.delta.text;
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+        return parsed.delta.text;
+      }
+      return null;
+    } catch {
+      return null;
     }
-    return null;
   };
 
   return processStream(response, parser, "Anthropic");
@@ -333,8 +267,8 @@ async function callOpenAIAPI(model: string, messages: any[]): Promise<ReadableSt
     body: JSON.stringify({
       model,
       messages,
-      stream: true,
-      max_tokens: CONFIG.MAX_TOKENS_DEFAULT
+      max_tokens: CONFIG.MAX_TOKENS_DEFAULT,
+      stream: true
     }),
     signal: AbortSignal.timeout(CONFIG.API_TIMEOUT_MS)
   });
@@ -345,8 +279,12 @@ async function callOpenAIAPI(model: string, messages: any[]): Promise<ReadableSt
   }
 
   const parser = (data: string): string | null => {
-    const parsed = JSON.parse(data);
-    return parsed?.choices?.[0]?.delta?.content || null;
+    try {
+      const parsed = JSON.parse(data);
+      return parsed.choices?.[0]?.delta?.content || null;
+    } catch {
+      return null;
+    }
   };
 
   return processStream(response, parser, "OpenAI");
@@ -369,29 +307,15 @@ async function callGeminiAPI(model: string, contents: any[]): Promise<ReadableSt
   });
 
   if (!response.ok) {
-    const errorText = await response.text();    throw new Error(`Gemini API error: ${response.status}. ${errorText}`);
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status}. ${errorText}`);
   }
 
   const parser = (data: string): string | null => {
     try {
       const parsed = JSON.parse(data);
-
-      log("DEBUG", "[GEMINI-PARSER] Parsed JSON structure", {
-        hasCandidates: !!parsed?.candidates,
-        candidatesLength: parsed?.candidates?.length,
-        hasContent: !!parsed?.candidates?.[0]?.content,
-        hasParts: !!parsed?.candidates?.[0]?.content?.parts,
-        partsLength: parsed?.candidates?.[0]?.content?.parts?.length,
-        keys: Object.keys(parsed || {}).join(', ')
-      });
-
-      const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        log("DEBUG", "[GEMINI-PARSER] Successfully extracted text", { textLength: text.length });
-      }
-      return text || null;
-    } catch (e) {
-      log("ERROR", "[GEMINI-PARSER] JSON parse failed", { error: (e as Error).message });
+      return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    } catch {
       return null;
     }
   };
@@ -435,96 +359,65 @@ async function fetchAndEncodeImages(imageIds: string[], userId: string): Promise
     .in('id', imageIds)
     .eq('user_id', userId);
 
-  if (error || !imageRecords || imageRecords.length === 0) {
-    log("ERROR", "[IMAGES] Failed to fetch image records", { error: error?.message, imageIds });
+  if (error || !imageRecords) {
+    log("ERROR", "[IMAGES] Failed to fetch image records", { error: error?.message });
     return [];
   }
 
   const downloadPromises = imageRecords.map(async (record) => {
-    if (!record.storage_path || !record.mime_type) {
-      log("ERROR", `[IMAGES] Missing storage_path or mime_type for image ${record.id}`);
-      return null;
-    }
-
-    log("DEBUG", "[IMAGES] Downloading from storage", {
-      bucket: CONFIG.IMAGE_BUCKET_NAME,
-      path: record.storage_path
-    });
-
-    const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-      .from(CONFIG.IMAGE_BUCKET_NAME)
-      .download(record.storage_path);
-
-    if (downloadError || !fileData) {
-      log("ERROR", `[IMAGES] Failed to download image ${record.id}`, {
-        error: downloadError?.message,
-        path: record.storage_path
-      });
-      return null;
-    }
-
     try {
+      const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+        .from(CONFIG.IMAGE_BUCKET_NAME)
+        .download(record.storage_path);
+
+      if (downloadError || !fileData) {
+        log("ERROR", "[IMAGES] Failed to download image", {
+          imageId: record.id,
+          error: downloadError?.message
+        });
+        return null;
+      }
+
       const arrayBuffer = await fileData.arrayBuffer();
-      const base64 = encodeBase64(arrayBuffer);
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
       return {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: record.mime_type,
+        inline_data: {
+          mime_type: record.mime_type,
           data: base64
         }
       };
-    } catch (error) {
-      log("ERROR", `[IMAGES] Failed to encode image ${record.id}`, { error: (error as Error).message });
+    } catch (err) {
+      log("ERROR", "[IMAGES] Exception processing image", {
+        imageId: record.id,
+        error: (err as Error).message
+      });
       return null;
     }
   });
 
   const results = await Promise.all(downloadPromises);
-  return results.filter(Boolean);
+  return results.filter((img): img is NonNullable<typeof img> => img !== null);
 }
 
-function encodeBase64(buffer: ArrayBuffer): string {
-  const uint8Array = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < uint8Array.length; i++) {
-    binary += String.fromCharCode(uint8Array[i]);
-  }
-  return btoa(binary);
-}
-
-function formatMessagesForProvider(
-  provider: 'anthropic' | 'openai' | 'gemini',
+function formatMessages(
   messages: any[],
-  images: any[]
+  provider: 'anthropic' | 'openai' | 'gemini',
+  images: any[],
+  domainContext?: string | null
 ): any[] {
-  if (provider === 'anthropic') {
-    return messages.map((msg: any, idx: number) => {
-      if (msg.role === 'user' && idx === messages.length - 1 && images.length > 0) {
+  if (provider === 'anthropic' || provider === 'openai') {
+    return messages.map((msg: any, index: number) => {
+      if (images.length > 0 && index === messages.length - 1 && msg.role === 'user') {
         return {
           role: 'user',
           content: [
+            ...(domainContext ? [{ type: 'text', text: domainContext }] : []),
             { type: 'text', text: msg.content },
-            ...images
-          ]
-        };
-      }
-      return { role: msg.role, content: msg.content };
-    });
-  } else if (provider === 'openai') {
-    return messages.map((msg: any, idx: number) => {
-      if (msg.role === 'user' && idx === messages.length - 1 && images.length > 0) {
-        const imageUrls = images.map((img: any) => ({
-          type: 'image_url',
-          image_url: {
-            url: `data:${img.source.media_type};base64,${img.source.data}`
-          }
-        }));
-        return {
-          role: 'user',
-          content: [
-            { type: 'text', text: msg.content },
-            ...imageUrls
+            ...images.map(img => ({
+              type: 'image',
+              source: img.inline_data
+            }))
           ]
         };
       }
@@ -606,128 +499,31 @@ Deno.serve(async (req: Request) => {
       provider,
       model,
       taskType,
-      agentName,
-      intentDetected,
-      reasoning,
       confidence,
-      handoffSummary,
-      imageCount: images.length
-    });
-
-    log("INFO", `[${provider.toUpperCase()}] Using limits`, {
-      taskType,
-      maxOutputTokens: limits.maxOutputTokens,
-      timeoutMs: limits.timeoutMs,
-      temperature: limits.temperature,
-      model
-    });
-
-    // CRITICAL: Validate conversation exists before inserting messages
-    // This prevents FK constraint violations (Error 23503)
-    log("INFO", "[ROUTER-DEBUG] Validating conversation ID", {
-      requestId,
-      conversationId,
-      sessionId: body.sessionId,
-      idsMatch: conversationId === body.sessionId
-    });
-
-    const { data: existingConversation, error: convCheckError } = await supabaseAdmin
-      .from('ai_conversations')
-      .select('id')
-      .eq('id', conversationId)
-      .maybeSingle();
-
-    if (convCheckError) {
-      log("ERROR", "[ROUTER-DEBUG] Conversation validation error", {
-        requestId,
-        conversationId,
-        error: convCheckError.message
-      });
-      throw new Error(`Failed to validate conversation: ${convCheckError.message}`);
-    }
-
-    if (!existingConversation) {
-      log("WARN", "[ROUTER-DEBUG] Conversation not found, attempting fallback lookup", {
-        requestId,
-        conversationId,
-        sessionId: body.sessionId
-      });
-
-      // Try to find by session_id if conversationId doesn't match
-      if (body.sessionId && conversationId === body.sessionId) {
-        const { data: sessionConv, error: sessionError } = await supabaseAdmin
-          .from('ai_conversations')
-          .select('id')
-          .eq('session_id', body.sessionId)
-          .maybeSingle();
-
-        if (sessionError) {
-          log("ERROR", "[ROUTER-DEBUG] Session lookup failed", {
-            requestId,
-            sessionId: body.sessionId,
-            error: sessionError.message
-          });
-        } else if (sessionConv) {
-          log("INFO", "[ROUTER-DEBUG] Found conversation via session_id", {
-            requestId,
-            foundConversationId: sessionConv.id,
-            sessionId: body.sessionId
-          });
-          // Use the correct conversation ID
-          conversationId = sessionConv.id;
-        } else {
-          log("ERROR", "[ROUTER-DEBUG] No conversation found for session", {
-            requestId,
-            sessionId: body.sessionId,
-            providedConversationId: conversationId
-          });
-          throw new Error(`Conversation not found. Please start a new conversation. (Provided ID: ${conversationId}, Session: ${body.sessionId})`);
-        }
-      } else {
-        log("ERROR", "[ROUTER-DEBUG] Invalid conversation ID", {
-          requestId,
-          conversationId,
-          hint: "Conversation ID does not exist in database"
-        });
-        throw new Error(`Invalid conversation ID: ${conversationId}`);
-      }
-    }
-
-    log("INFO", "[ROUTER-DEBUG] Conversation validated successfully", {
-      requestId,
-      conversationId
+      reasoning
     });
 
     const domainContext = await getDomainContext(user.id);
-    const baseSystemPrompt = domainContext || "You are a helpful AI assistant.";
+    const apiPayload = formatMessages(messages, provider, images, domainContext);
 
-    // Inject lane-specific persona if available
-    const lanePersona = LANE_PERSONAS[taskType] || '';
-    const anthropicSystemPrompt = lanePersona
-      ? `${baseSystemPrompt}\n\n${lanePersona}`
-      : baseSystemPrompt;
+    const anthropicSystemPrompt = provider === 'anthropic' ? LANE_PERSONAS[taskType] : undefined;
 
-    const apiPayload = formatMessagesForProvider(provider, messages, images);
+    let streamProvider = provider;
+    let streamModel = model;
 
     supabaseAdmin.from('ai_messages').insert({
       conversation_id: conversationId,
       role: 'user',
       content: lastUserMessage.content,
-      metadata: {
-        image_count: images.length,
-        has_images: images.length > 0,
-        mode: mode || 'chat'
-      }
+      model: 'user-input',
+      task_type: taskType
     }).then(({ error }) => {
       if (error) {
         log("ERROR", "[DB-ASYNC] Failed to persist user message", {
           requestId,
-          conversationId,
-          error: error.message,
-          errorCode: error.code,
-          errorDetails: error.details
+          error: error.message
         });
-        // Log FK violation details for debugging
+
         if (error.code === '23503') {
           log("ERROR", "[DB-ASYNC] Foreign Key constraint violation detected!", {
             requestId,
@@ -745,16 +541,13 @@ Deno.serve(async (req: Request) => {
         let keepaliveInterval: number | null = null;
 
         try {
-          // Setup keepalive to prevent connection drops on mobile
           keepaliveInterval = setInterval(() => {
             try {
               sendSSE(controller, { type: 'keepalive' });
             } catch (e) {
-              // Ignore errors if controller is closed
             }
-          }, 15000); // Every 15 seconds
+          }, 15000);
 
-          // Send router decision event for UI theater
           sendSSE(controller, {
             type: 'router_decision',
             agent: agentName,
@@ -765,7 +558,6 @@ Deno.serve(async (req: Request) => {
             model
           });
 
-          // Send model switch event for backward compatibility
           sendSSE(controller, {
             type: 'model_switch',
             provider,
@@ -793,7 +585,6 @@ Deno.serve(async (req: Request) => {
           let lastChunkTime = performance.now();
           let chunkCount = 0;
 
-          // Send initial status event
           sendSSE(controller, {
             type: 'status',
             state: 'streaming',
@@ -821,7 +612,6 @@ Deno.serve(async (req: Request) => {
                 partialContent: assistantResponseText.length
               });
 
-              // If we have partial content, save it and close gracefully
               if (assistantResponseText.trim()) {
                 sendSSE(controller, {
                   type: 'warning',
@@ -845,7 +635,6 @@ Deno.serve(async (req: Request) => {
               content: chunk
             });
 
-            // Send periodic heartbeat for mobile connections
             if (chunkCount % 50 === 0) {
               sendSSE(controller, {
                 type: 'heartbeat',
@@ -886,7 +675,6 @@ Deno.serve(async (req: Request) => {
             });
           }
 
-          // Clear keepalive before closing
           if (keepaliveInterval) clearInterval(keepaliveInterval);
 
           controller.close();
@@ -910,7 +698,6 @@ Deno.serve(async (req: Request) => {
             stack: (error as Error).stack
           });
 
-          // Save partial response if available
           if (assistantResponseText && assistantResponseText.trim().length > 50) {
             const durationMs = performance.now() - startTime;
             supabaseAdmin.from('ai_messages').insert({
@@ -933,16 +720,21 @@ Deno.serve(async (req: Request) => {
             });
           }
 
-          // Clear keepalive on error
           if (keepaliveInterval) clearInterval(keepaliveInterval);
 
           try {
             sendSSE(controller, {
               type: 'error',
-              content: `An error occurred during processing: ${(error as Error).message}`
+              content: `Stream error: ${(error as Error).message}`
             });
-            controller.close();
-          } catch (e) {}
+          } catch (sendError) {
+            log("ERROR", "[SSE] Failed to send error event", {
+              requestId,
+              error: (sendError as Error).message
+            });
+          }
+
+          controller.close();
         }
       }
     });
@@ -952,19 +744,22 @@ Deno.serve(async (req: Request) => {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'X-Request-Id': requestId
       }
     });
 
   } catch (error) {
-    log("ERROR", "[REQUEST] Request failed", {
-      requestId,
+    log("ERROR", "[REQUEST] Fatal error", {
       error: (error as Error).message,
       stack: (error as Error).stack
     });
-    return new Response(
-      JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+
+    return new Response(JSON.stringify({
+      error: (error as Error).message
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });

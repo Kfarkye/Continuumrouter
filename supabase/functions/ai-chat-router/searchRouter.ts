@@ -13,7 +13,6 @@ interface SearchQueryParams {
 export async function handleSearchQuery(params: SearchQueryParams): Promise<Response> {
   const { query, conversationId, userId, messages, supabase, corsHeaders, userToken } = params;
 
-  // Generate request ID for full traceability
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
 
@@ -23,8 +22,6 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
     console.log('[ROUTER-DEBUG]', requestId, 'Conversation ID:', conversationId);
     console.log('[ROUTER-DEBUG]', requestId, 'User ID:', userId);
 
-    // CRITICAL FIX: Validate conversation exists before proceeding
-    // The conversationId should be the actual database PK, not sessionId
     const { data: existingConversation, error: convCheckError } = await supabase
       .from('ai_conversations')
       .select('id, session_id')
@@ -48,8 +45,8 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
 
     const searchPayload = {
       query,
-      conversation_id: conversationId, // Use validated conversation ID
-      session_id: existingConversation.session_id, // Use actual session_id from DB
+      conversation_id: conversationId,
+      session_id: existingConversation.session_id,
       trigger_source: 'auto'
     };
 
@@ -57,13 +54,11 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
 
-    // Auth visibility
     console.log('[ROUTER-DEBUG]', requestId, 'Search URL:', `${supabaseUrl}/functions/v1/perplexity-search`);
     console.log('[ROUTER-DEBUG]', requestId, 'User token length:', userToken ? userToken.length : 0);
     console.log('[ROUTER-DEBUG]', requestId, 'Calling perplexity-search via fetch...');
 
-    // PHASE 1: Fetch from perplexity-search with timeout
-    const SEARCH_TIMEOUT_MS = 5000; // 5 second timeout for search
+    const SEARCH_TIMEOUT_MS = 5000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
@@ -99,14 +94,12 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
       throw new Error(`Search function returned ${searchFetchResponse.status}: ${errorText}`);
     }
 
-    // PHASE 2: Parse and normalize JSON contract
     const raw = await searchFetchResponse.json();
     const afterFetch = Date.now();
     console.log('[ROUTER-DEBUG]', requestId, 'Fetch+JSON duration_ms:', afterFetch - startedAt);
     console.log('[ROUTER-DEBUG]', requestId, 'Raw search JSON:', JSON.stringify(raw, null, 2));
     console.log('[ROUTER-DEBUG]', requestId, 'Raw search JSON keys:', Object.keys(raw));
 
-    // Normalize response: handle both { data, error } and direct shape
     const searchResponse = {
       data: raw.data ?? raw,
       error: raw.error ?? null,
@@ -125,7 +118,6 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
 
     const { search_summary, references, metadata } = searchResponse.data ?? {};
 
-    // PHASE 3: Type and shape validation
     console.log('[ROUTER-DEBUG]', requestId, 'Extracted fields summary:', {
       search_summary_type: typeof search_summary,
       search_summary_length: search_summary?.length || 0,
@@ -147,7 +139,6 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
       metadata
     });
 
-    // PHASE 4: Supabase insert with explicit success/failure logging
     if (conversationId) {
       console.log('[ROUTER-DEBUG]', requestId, 'Inserting ai_messages row for conversation:', conversationId);
       console.log('[ROUTER-DEBUG]', requestId, 'Insert payload size:', {
@@ -178,7 +169,6 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
           details: insertError.details,
           hint: insertError.hint
         });
-        // Don't throw - continue to return search results even if DB insert fails
         console.warn('[ROUTER-DEBUG]', requestId, 'Continuing despite insert error - user will still see results');
       } else {
         console.log('[ROUTER-DEBUG]', requestId, 'ai_messages insert SUCCESS:', insertData);
@@ -187,12 +177,10 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
       console.log('[ROUTER-DEBUG]', requestId, 'No conversationId provided, skipping ai_messages insert');
     }
 
-    // PHASE 5: Build and return SSE stream
     console.log('[ROUTER-DEBUG]', requestId, 'Building SSE response stream');
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
-        // Send model switch event
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: 'model_switch',
           provider: 'perplexity',
@@ -200,13 +188,11 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
           metadata: { isSearchResult: true, requestId }
         })}\n\n`));
 
-        // Send the search summary as text chunks
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: 'text',
           content: search_summary
         })}\n\n`));
 
-        // Send done event
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: 'done'
         })}\n\n`));
@@ -237,7 +223,6 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
     console.error('[ROUTER-DEBUG]', requestId, 'Error stack:', error.stack);
     console.error('[ROUTER-DEBUG]', requestId, 'Error occurred at duration_ms:', errorDuration);
 
-    // Return error as SSE stream with requestId for correlation
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
