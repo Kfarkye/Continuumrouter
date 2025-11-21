@@ -541,6 +541,33 @@ export const useAiRouterChat = ({
                 }
                 break;
 
+              case 'status':
+                // Backend status update (e.g., 'streaming', 'searching')
+                debugLog('📊 Status update:', data.state);
+                if (data.state === 'streaming') {
+                  dispatch({ type: 'PROGRESS_UPDATE', payload: { progress: 5, step: 'Starting stream...' } });
+                }
+                break;
+
+              case 'keepalive':
+                // Connection keepalive - ignore silently
+                break;
+
+              case 'heartbeat':
+                // Periodic heartbeat - log in dev mode only
+                if (import.meta.env.DEV) {
+                  debugLog('💓 Heartbeat:', data.chunks);
+                }
+                break;
+
+              case 'warning':
+                // Backend warning (e.g., stream interrupted)
+                debugLog('⚠️ Warning:', data.content);
+                if (data.content) {
+                  dispatch({ type: 'STREAM_CHUNK', payload: { content: data.content, messageId: assistantMessageId } });
+                }
+                break;
+
               case 'error':
                 // The backend signaled an error during the stream
                 throw new Error(data.content || 'Stream encountered an internal error');

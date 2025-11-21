@@ -62,15 +62,30 @@ export async function handleSearchQuery(params: SearchQueryParams): Promise<Resp
     console.log('[ROUTER-DEBUG]', requestId, 'User token length:', userToken ? userToken.length : 0);
     console.log('[ROUTER-DEBUG]', requestId, 'Calling perplexity-search via fetch...');
 
-    // PHASE 1: Fetch from perplexity-search
-    const searchFetchResponse = await fetch(`${supabaseUrl}/functions/v1/perplexity-search`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userToken}`,
-      },
-      body: JSON.stringify(searchPayload)
-    });
+    // PHASE 1: Fetch from perplexity-search with timeout
+    const SEARCH_TIMEOUT_MS = 5000; // 5 second timeout for search
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+
+    let searchFetchResponse;
+    try {
+      searchFetchResponse = await fetch(`${supabaseUrl}/functions/v1/perplexity-search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`,
+        },
+        body: JSON.stringify(searchPayload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error(`Search request timed out after ${SEARCH_TIMEOUT_MS}ms`);
+      }
+      throw fetchError;
+    }
 
     console.log('[ROUTER-DEBUG]', requestId, 'Fetch response status:', searchFetchResponse.status);
     console.log('[ROUTER-DEBUG]', requestId, 'Fetch response headers:', {

@@ -8,7 +8,10 @@ const env = Deno.env.toObject();
 const CONFIG = {
   API_TIMEOUT_MS: 180000,
   MAX_TOKENS_DEFAULT: 6000,
-  IMAGE_BUCKET_NAME: 'chat-uploads'
+  IMAGE_BUCKET_NAME: 'chat-uploads',
+  SEARCH_TIMEOUT_MS: 3000, // 3s timeout for search context
+  MOBILE_STREAM_TIMEOUT_MS: 120000, // 2min for mobile
+  CHUNK_READ_TIMEOUT_MS: 20000 // 20s between chunks (reduced from 30s)
 } as const;
 
 if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -739,7 +742,18 @@ Deno.serve(async (req: Request) => {
     const stream = new ReadableStream({
       async start(controller) {
         let streamProvider = provider;
+        let keepaliveInterval: number | null = null;
+
         try {
+          // Setup keepalive to prevent connection drops on mobile
+          keepaliveInterval = setInterval(() => {
+            try {
+              sendSSE(controller, { type: 'keepalive' });
+            } catch (e) {
+              // Ignore errors if controller is closed
+            }
+          }, 15000); // Every 15 seconds
+
           // Send router decision event for UI theater
           sendSSE(controller, {
             type: 'router_decision',
@@ -777,10 +791,19 @@ Deno.serve(async (req: Request) => {
           const streamStartTime = performance.now();
           const STREAM_TIMEOUT_MS = 180000;
           let lastChunkTime = performance.now();
+          let chunkCount = 0;
+
+          // Send initial status event
+          sendSSE(controller, {
+            type: 'status',
+            state: 'streaming',
+            provider: streamProvider,
+            model: streamModel
+          });
 
           while (true) {
             const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Stream read timeout')), 30000)
+              setTimeout(() => reject(new Error('Stream read timeout')), CONFIG.CHUNK_READ_TIMEOUT_MS)
             );
 
             const readPromise = reader.read();
@@ -793,15 +816,27 @@ Deno.serve(async (req: Request) => {
                 requestId,
                 provider: streamProvider,
                 elapsedMs: performance.now() - streamStartTime,
-                timeSinceLastChunk: performance.now() - lastChunkTime
+                timeSinceLastChunk: performance.now() - lastChunkTime,
+                chunksReceived: chunkCount,
+                partialContent: assistantResponseText.length
               });
-              throw new Error(`Stream read timeout after 30 seconds of inactivity`);
+
+              // If we have partial content, save it and close gracefully
+              if (assistantResponseText.trim()) {
+                sendSSE(controller, {
+                  type: 'warning',
+                  content: ' [Stream interrupted - response may be incomplete]'
+                });
+                break;
+              }
+              throw new Error(`Stream read timeout after ${CONFIG.CHUNK_READ_TIMEOUT_MS}ms of inactivity`);
             }
 
             const { done, value } = result as { done: boolean; value?: Uint8Array };
             if (done) break;
 
             lastChunkTime = performance.now();
+            chunkCount++;
             const chunk = decoder.decode(value);
             assistantResponseText += chunk;
 
@@ -809,6 +844,14 @@ Deno.serve(async (req: Request) => {
               type: 'text',
               content: chunk
             });
+
+            // Send periodic heartbeat for mobile connections
+            if (chunkCount % 50 === 0) {
+              sendSSE(controller, {
+                type: 'heartbeat',
+                chunks: chunkCount
+              });
+            }
 
             if (performance.now() - streamStartTime > STREAM_TIMEOUT_MS) {
               log("ERROR", "[STREAM-TIMEOUT] Total stream time exceeded", {
@@ -843,18 +886,56 @@ Deno.serve(async (req: Request) => {
             });
           }
 
+          // Clear keepalive before closing
+          if (keepaliveInterval) clearInterval(keepaliveInterval);
+
           controller.close();
           log("INFO", "[REQUEST] Stream completed successfully", {
             requestId,
-            durationMs: performance.now() - startTime
+            durationMs: performance.now() - startTime,
+            totalChunks: chunkCount
           });
         } catch (error) {
+          const errorMessage = (error as Error).message;
+          const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('Timeout');
+          const isNetworkError = errorMessage.includes('network') || errorMessage.includes('fetch');
+
           log("ERROR", "[STREAM] Error during API streaming", {
             requestId,
             provider: streamProvider,
-            error: (error as Error).message,
+            error: errorMessage,
+            isTimeout,
+            isNetworkError,
+            partialContent: assistantResponseText?.length || 0,
             stack: (error as Error).stack
           });
+
+          // Save partial response if available
+          if (assistantResponseText && assistantResponseText.trim().length > 50) {
+            const durationMs = performance.now() - startTime;
+            supabaseAdmin.from('ai_messages').insert({
+              conversation_id: conversationId,
+              role: 'assistant',
+              content: assistantResponseText + '\n\n[Response interrupted]',
+              model: model,
+              task_type: taskType,
+              metadata: {
+                duration_ms: durationMs,
+                provider: provider,
+                interrupted: true,
+                error: errorMessage
+              }
+            }).then(({ error: dbError }) => {
+              if (dbError) log("ERROR", "[DB-ASYNC] Failed to persist partial message", {
+                requestId,
+                error: dbError.message
+              });
+            });
+          }
+
+          // Clear keepalive on error
+          if (keepaliveInterval) clearInterval(keepaliveInterval);
+
           try {
             sendSSE(controller, {
               type: 'error',
