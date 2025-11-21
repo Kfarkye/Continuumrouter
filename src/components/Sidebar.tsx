@@ -1,5 +1,5 @@
-// Sidebar.tsx - Stripe Precision Layout / Original Dark Theme Colors
-// The crisp structural UX of Stripe, but with your original Deep Black/Blue palette.
+// Sidebar.tsx - Stripe × Jony Ive × Vercel Design Language
+// Minimal, precise, and intentional. Every pixel matters.
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo, Fragment } from 'react';
 import ReactDOM from 'react-dom';
@@ -38,19 +38,35 @@ import { FilesModal } from './FilesModal';
 import { ClinicianImportModal } from './ClinicianImportModal';
 
 // ============================================================================
-// STYLING CONSTANTS (Stripe Layout / Original Colors)
+// DESIGN SYSTEM - Stripe × Vercel Precision
 // ============================================================================
 const THEME = {
-  bg: 'bg-[#09090b]',
-  bgHover: 'hover:bg-[#27272a]',
-  bgActive: 'bg-[#27272a]',
-  text: 'text-[#a1a1aa]',
-  textActive: 'text-white',
-  accent: 'bg-[#3b82f6]',
-  accentHover: 'hover:bg-[#2563eb]',
-  border: 'border-white/10',
-  focusRing: 'focus:ring-2 focus:ring-[#3b82f6] focus:ring-offset-2 focus:ring-offset-[#09090b]',
-  modalBg: 'bg-[#18181b]',
+  // Backgrounds - Vercel's neutral grays
+  bg: 'bg-[#0a0a0a]',              // Deeper than Vercel's black
+  bgElevated: 'bg-[#111111]',      // Elevated surfaces
+  bgHover: 'hover:bg-[#1a1a1a]',   // Subtle hover state
+  bgActive: 'bg-[#1a1a1a]',        // Active state
+
+  // Typography - Precise hierarchy
+  text: 'text-[#888888]',          // Secondary text (Vercel gray-500)
+  textMuted: 'text-[#666666]',     // Tertiary text
+  textActive: 'text-[#fafafa]',    // Primary text (near white)
+
+  // Accents - Minimal blue
+  accent: 'bg-[#0070f3]',          // Vercel blue
+  accentHover: 'hover:bg-[#0761d1]',
+  accentMuted: 'text-[#0070f3]',
+
+  // Borders - Hairline precision
+  border: 'border-[#1a1a1a]',      // Subtle dividers
+  borderHover: 'border-[#333333]', // Interactive borders
+
+  // Focus states - Accessibility first
+  focusRing: 'focus:ring-1 focus:ring-[#0070f3] focus:ring-offset-0',
+
+  // Modals
+  modalBg: 'bg-[#111111]',
+  modalOverlay: 'bg-black/60',     // Softer overlay
 };
 
 // ============================================================================
@@ -137,8 +153,9 @@ const NAVIGATION_SECTIONS: NavItemType[] = [
   { id: 'import', label: 'Import', icon: Upload, origin: 'import_clinician', action: 'modal', description: 'Data ingestion', group: 'Resources' },
 ];
 
-const SIDEBAR_WIDTH_EXPANDED = 260;
-const SIDEBAR_WIDTH_COLLAPSED = 64;
+// Layout constants - Stripe precision
+const SIDEBAR_WIDTH_EXPANDED = 240;  // Narrower, more focused
+const SIDEBAR_WIDTH_COLLAPSED = 56;  // Tighter collapsed state
 
 const useGroupedNavigation = (items: NavItemType[]) => {
   return useMemo(() => {
@@ -188,18 +205,18 @@ const Modal: React.FC<{
   };
 
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 transition-opacity" onClick={onClose}>
       <div
         ref={modalRef}
-        className={`relative flex flex-col ${THEME.modalBg} rounded-lg shadow-2xl border border-white/10 w-full overflow-hidden ${sizeClasses[size]}`}
+        className={`relative flex flex-col ${THEME.modalBg} rounded-xl shadow-2xl border ${THEME.border} w-full overflow-hidden ${sizeClasses[size]}`}
         onClick={(e) => e.stopPropagation()}
         tabIndex={-1}
         role="dialog"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#09090b]/50">
-          <h2 className="text-lg font-semibold text-white tracking-tight">{title}</h2>
-          <button onClick={onClose} className="text-[#a1a1aa] hover:text-white transition-colors p-1 rounded focus:outline-none focus:ring-2 focus:ring-[#3b82f6]">
-            <X size={20} strokeWidth={2} />
+        <div className="flex items-center justify-between px-6 py-3.5 border-b ${THEME.border}">
+          <h2 className="text-[15px] font-medium ${THEME.textActive} tracking-[-0.01em]">{title}</h2>
+          <button onClick={onClose} className="${THEME.text} hover:${THEME.textActive} transition-colors p-1.5 rounded-md ${THEME.bgHover}">
+            <X size={18} strokeWidth={1.5} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -216,7 +233,7 @@ const Tooltip: React.FC<{ children: React.ReactNode; content: string; disabled?:
   return (
     <div className="group relative flex items-center">
       {children}
-      <div className="absolute left-full ml-3 px-2 py-1 bg-[#18181b] border border-white/10 text-white text-xs font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-50">
+      <div className="absolute left-full ml-2 px-2 py-1 bg-[#1a1a1a] border ${THEME.border} ${THEME.textActive} text-[11px] font-medium rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
         {content}
       </div>
     </div>
@@ -235,27 +252,27 @@ const NavItem = memo(({ item, isActive, displayMode, onClick }: {
         onClick={() => onClick(item)}
         className={`
           group flex items-center w-full relative
-          ${isCollapsed ? 'justify-center px-0' : 'px-3'}
-          py-2 rounded-md transition-all duration-150 ease-out
-          ${isActive ? `${THEME.bgActive} ${THEME.textActive} font-medium` : `${THEME.text} ${THEME.bgHover} hover:text-white`}
+          ${isCollapsed ? 'justify-center px-0' : 'px-2.5'}
+          py-1.5 rounded-md transition-all duration-200 ease-out
+          ${isActive ? `${THEME.bgActive} ${THEME.textActive}` : `${THEME.text} ${THEME.bgHover}`}
           focus:outline-none ${THEME.focusRing}
         `}
       >
         {isActive && !isCollapsed && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 bg-[#3b82f6] rounded-r-full" />
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] bg-[#0070f3] rounded-r" />
         )}
 
         <Icon
-          size={20}
-          strokeWidth={2}
+          size={18}
+          strokeWidth={isActive ? 2 : 1.5}
           className={`
-            transition-colors duration-150 flex-shrink-0
-            ${isActive ? 'text-[#3b82f6]' : 'text-[#a1a1aa] group-hover:text-white'}
+            transition-all duration-200 flex-shrink-0
+            ${isActive ? THEME.accentMuted : `${THEME.text} group-hover:${THEME.textActive}`}
           `}
         />
 
         {!isCollapsed && (
-          <span className="ml-3 text-sm truncate tracking-tight">
+          <span className="ml-2.5 text-[13px] truncate tracking-[-0.01em] font-medium">
             {item.label}
           </span>
         )}
@@ -335,7 +352,7 @@ const ConversationListModal: React.FC<{
             placeholder="Search conversations..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-[#09090b] border border-white/10 rounded-lg text-white placeholder-[#a1a1aa] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+            className="w-full pl-10 pr-4 py-2 bg-[#0a0a0a] border ${THEME.border} rounded-lg ${THEME.textActive} placeholder-[#666666] text-[13px] focus:outline-none ${THEME.focusRing}"
           />
         </div>
 
@@ -519,24 +536,24 @@ const SpaceSelector: React.FC<SidebarProps & { displayMode: string }> = ({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          w-full flex items-center gap-3
-          bg-white/[0.05] hover:bg-white/[0.08] border border-white/[0.05]
-          rounded-lg transition-all duration-150
-          ${isCollapsed ? 'p-2 justify-center' : 'px-3 py-2.5 justify-between'}
+          w-full flex items-center gap-2.5
+          ${THEME.bgElevated} ${THEME.bgHover} border ${THEME.border}
+          rounded-lg transition-all duration-200
+          ${isCollapsed ? 'p-2 justify-center' : 'px-2.5 py-2 justify-between'}
           focus:outline-none ${THEME.focusRing}
         `}
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-5 h-5 rounded-md bg-[#0070f3] flex items-center justify-center text-[10px] font-semibold text-white">
             {currentSpace.name.charAt(0).toUpperCase()}
           </div>
           {!isCollapsed && (
-            <span className="text-sm font-semibold text-white truncate">
+            <span className="text-[13px] font-medium ${THEME.textActive} truncate tracking-[-0.01em]">
               {currentSpace.name}
             </span>
           )}
         </div>
-        {!isCollapsed && <ChevronDown size={14} className={`text-[#a1a1aa] transition-transform ${isOpen ? 'rotate-180' : ''}`} />}
+        {!isCollapsed && <ChevronDown size={12} className={`${THEME.text} transition-transform ${isOpen ? 'rotate-180' : ''}`} strokeWidth={2} />}
       </button>
 
       {isOpen && !isCollapsed && (
@@ -726,11 +743,12 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
             className={`
               flex items-center justify-center gap-2
               ${THEME.accent} ${THEME.accentHover} text-white
-              h-9 w-full rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.1)]
-              font-medium text-sm transition-all duration-150
-              focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:ring-offset-2 focus:ring-offset-[#09090b]
-              ${props.isSidebarCollapsed ? 'px-0' : 'px-4'}
+              h-8 w-full rounded-md
+              font-medium text-[13px] tracking-[-0.01em] transition-all duration-200
+              focus:outline-none ${THEME.focusRing}
+              ${props.isSidebarCollapsed ? 'px-0' : 'px-3'}
               disabled:opacity-50 disabled:cursor-not-allowed
+              active:scale-[0.98]
             `}
           >
             <Plus size={18} strokeWidth={2.5} />
@@ -743,7 +761,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
           {Object.entries(groupedNav).map(([group, items]) => (
             <div key={group}>
               {!props.isSidebarCollapsed && (
-                <h4 className="px-3 mb-2 text-[11px] font-bold uppercase tracking-widest text-[#52525b]">
+                <h4 className="px-2.5 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#666666]">
                   {group}
                 </h4>
               )}
@@ -764,30 +782,30 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
 
         {/* 4. Processing Indicator (Stripe Terminal Style) */}
         {props.isProcessing && !props.isSidebarCollapsed && (
-          <div className="px-3 py-4">
-            <div className="bg-[#18181b] rounded border border-white/10 p-3 shadow-inner">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-mono text-[#3b82f6]">PROCESSING</span>
-                <span className="text-xs font-mono text-[#a1a1aa]">{props.currentProgress}%</span>
+          <div className="px-2.5 py-3">
+            <div className="${THEME.bgElevated} rounded-lg border ${THEME.border} p-2.5">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[10px] font-mono ${THEME.accentMuted} uppercase tracking-wider">Processing</span>
+                <span className="text-[10px] font-mono ${THEME.text}">{props.currentProgress}%</span>
               </div>
-              <div className="h-1 w-full bg-[#09090b] rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-[#3b82f6] transition-all duration-300" 
-                  style={{ width: `${props.currentProgress}%` }} 
+              <div className="h-[2px] w-full bg-[#1a1a1a] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#0070f3] transition-all duration-300"
+                  style={{ width: `${props.currentProgress}%` }}
                 />
               </div>
               {props.currentStep && (
-                <div className="mt-2 text-[10px] text-[#a1a1aa] truncate font-mono">
+                <div className="mt-1.5 text-[10px] ${THEME.textMuted} truncate font-mono">
                   {props.currentStep}
                 </div>
               )}
               {props.currentModel && (
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="w-4 h-4">
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <div className="w-3 h-3">
                     {getModelIcon(props.currentModel)}
                   </div>
-                  <span className="text-[10px] text-[#a1a1aa] font-mono">
-                    {props.currentModel.toUpperCase()}
+                  <span className="text-[10px] ${THEME.textMuted} font-mono uppercase">
+                    {props.currentModel}
                   </span>
                 </div>
               )}
@@ -796,7 +814,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         )}
 
         {/* 5. Footer */}
-        <div className="p-3 border-t border-white/10 space-y-1">
+        <div className="p-2.5 border-t ${THEME.border} space-y-0.5">
           <NavItem
             item={{ 
               id: 'settings', 
@@ -831,10 +849,10 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         {!isMobile && (
           <button
             onClick={props.onToggleSidebar}
-            className="hidden lg:flex absolute top-6 -right-3 w-6 h-6 bg-[#18181b] border border-[#3f3f46] rounded-full items-center justify-center text-[#a1a1aa] hover:text-white shadow-md transition-colors z-20"
+            className="hidden lg:flex absolute top-5 -right-2.5 w-5 h-5 ${THEME.bgElevated} border ${THEME.border} rounded-full items-center justify-center ${THEME.text} hover:${THEME.textActive} shadow-lg transition-all duration-200 z-20 hover:scale-110"
             aria-label={props.isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {props.isSidebarCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+            {props.isSidebarCollapsed ? <ChevronRight size={10} strokeWidth={2.5} /> : <ChevronLeft size={10} strokeWidth={2.5} />}
           </button>
         )}
       </aside>
