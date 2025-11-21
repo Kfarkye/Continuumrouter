@@ -4,26 +4,11 @@ import { supabase } from '../lib/supabaseClient';
 import { TypeWriter } from './TypeWriter';
 
 const examples = [
-  {
-    line1: 'Ship YOUR product',
-    line2: 'and understand YOUR codebase',
-  },
-  {
-    line1: 'Turn your idea into software',
-    line2: 'without a 2-year dev course',
-  },
-  {
-    line1: 'Build with AI as your co-architect',
-    line2: 'and a human in the loop the whole way',
-  },
-  {
-    line1: 'See every file that gets generated',
-    line2: 'and learn what each part actually does',
-  },
-  {
-    line1: 'Own your stack, not a black box',
-    line2: 'ship once and stay literate forever',
-  },
+  { line1: 'Every Uber driver', line2: 'knows what drivers actually need' },
+  { line1: 'I see the problem every day', line2: 'but I can\'t build it' },
+  { line1: 'Tired of trash software', line2: 'that doesn\'t get my business' },
+  { line1: 'I got the idea and hustle', line2: 'just need to build it' },
+  { line1: 'Stop waiting for a developer', line2: 'build your own shit' },
 ];
 
 interface LandingPageProps {
@@ -82,7 +67,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
 
   const handleComplete = () => {
     setCurrentExampleIndex((prev) => (prev + 1) % examples.length);
-    setKey((prev) => prev + 1);
+    setKey(prev => prev + 1);
   };
 
   return (
@@ -102,10 +87,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
           <div className="max-w-lg">
             <TypeWriter
               key={key}
-              lines={[
-                examples[currentExampleIndex].line1,
-                examples[currentExampleIndex].line2,
-              ]}
+              lines={[examples[currentExampleIndex].line1, examples[currentExampleIndex].line2]}
               colors={['text-blue-400', 'text-white/60']}
               typingSpeed={40}
               deleteSpeed={25}
@@ -127,7 +109,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
         {!showAuthForm ? (
           // Landing View
           <div className="w-full max-w-md text-center animate-fadeIn">
-            <h1 className="text-5xl font-bold mb-8 tracking-tight">Welcome to Continuum</h1>
+            <h1 className="text-5xl font-bold mb-4 tracking-tight">Build your shit.</h1>
+            <p className="text-lg text-white/60 mb-8">
+              Stop waiting for someone else to build your idea.
+            </p>
 
             <div className="flex gap-4 mb-6">
               <button
@@ -190,14 +175,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
               </div>
 
               {error && (
-                <div
-                  className={
-                    'p-3 border rounded-lg text-sm transition-opacity duration-200 ' +
-                    (error.includes('Check your email')
-                      ? 'bg-green-500/10 border-green-500/20 text-green-500'
-                      : 'bg-red-500/10 border-red-500/20 text-red-500')
-                  }
-                >
+                <div className={'p-3 border rounded-lg text-sm transition-opacity duration-200 ' + (
+                  error.includes('Check your email')
+                    ? 'bg-green-500/10 border-green-500/20 text-green-500'
+                    : 'bg-red-500/10 border-red-500/20 text-red-500'
+                )}>
                   {error}
                 </div>
               )}
@@ -228,19 +210,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
             <Command className="w-5 h-5 text-white/30" strokeWidth={1.5} />
           </div>
           <div className="text-xs text-white/40 flex items-center gap-2">
-            <a
-              href="#"
-              className="hover:text-white/70 transition-colors duration-200"
-            >
-              Terms of use
-            </a>
+            <a href="#" className="hover:text-white/70 transition-colors duration-200">Terms of use</a>
             <span>|</span>
-            <a
-              href="#"
-              className="hover:text-white/70 transition-colors duration-200"
-            >
-              Privacy policy
-            </a>
+            <a href="#" className="hover:text-white/70 transition-colors duration-200">Privacy policy</a>
           </div>
         </footer>
       </div>
