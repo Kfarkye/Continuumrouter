@@ -411,8 +411,12 @@ export const useAiRouterChat = ({
         hasImages: imageIds.length > 0,
         conversationId: payload.conversationId,
         sessionId: payload.sessionId,
-        idsMatch: payload.conversationId === payload.sessionId
+        idsMatch: payload.conversationId === payload.sessionId,
+        endpoint: API_ENDPOINT
       });
+
+      console.log('[SEND MESSAGE] About to fetch from:', API_ENDPOINT);
+      console.log('[SEND MESSAGE] Payload:', JSON.stringify(payload, null, 2));
 
       // --- Network Request (with Retry Logic) ---
       const response = await fetchWithRetry(API_ENDPOINT, {
@@ -425,6 +429,13 @@ export const useAiRouterChat = ({
         signal: controller.signal,
       });
 
+      console.log('[SEND MESSAGE] Response received:', {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       // Handle non-OK responses (including those returned after retries failed)
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Invalid error response format' }));
@@ -434,8 +445,11 @@ export const useAiRouterChat = ({
       }
 
       if (!response.body) {
+        console.error('[SEND MESSAGE] Response body is null!');
         throw new Error('Response body is empty, cannot stream.');
       }
+
+      console.log('[SEND MESSAGE] Starting to read SSE stream...');
 
       // --- Stream Processing Loop (SSE) ---
       const reader = response.body.getReader();
@@ -461,10 +475,15 @@ export const useAiRouterChat = ({
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log('[SEND MESSAGE] Stream done, closing...');
+            break;
+          }
 
           lastDataTime = Date.now(); // Reset timeout on each data chunk
-          buffer += decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: true });
+          console.log('[SEND MESSAGE] Received chunk:', chunk.substring(0, 100));
+          buffer += chunk;
           // SSE messages MUST be separated by double newlines
           const events = buffer.split('\n\n');
           buffer = events.pop() || ''; // Keep the last partial event in the buffer
