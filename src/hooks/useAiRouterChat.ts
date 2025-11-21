@@ -214,7 +214,8 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
 export const useAiRouterChat = ({
   sessionId,
   accessToken,
-  // userId, files // Kept in interface but unused in this hook implementation
+  userId,
+  // files // Kept in interface but unused in this hook implementation
   onActionRequest,
   selectedModel,
   spaceId,
