@@ -38,10 +38,11 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
   const renderImages = () => {
     const count = images.length;
 
+    // Single image - full width, ChatGPT style
     if (count === 1) {
       const img = images[0];
       return (
-        <div className="max-w-[600px]">
+        <div className="max-w-[500px]">
           <ProgressiveImage
             src={img.url}
             thumbnail={img.thumbnail_url}
@@ -49,61 +50,73 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
             width={img.width}
             height={img.height}
             onClick={() => handleImageClick(0)}
+            objectFit="contain"
           />
         </div>
       );
     }
 
+    // Two images - side by side
     if (count === 2) {
       return (
-        <div className="grid grid-cols-2 gap-2 max-w-[600px]">
+        <div className="flex gap-1 max-w-[500px]">
           {images.map((img, index) => (
-            <ProgressiveImage
-              key={index}
-              src={img.url}
-              thumbnail={img.thumbnail_url}
-              alt={img.filename}
-              width={img.width}
-              height={img.height}
-              onClick={() => handleImageClick(index)}
-              className="aspect-square"
-            />
+            <div key={index} className="flex-1">
+              <ProgressiveImage
+                src={img.url}
+                thumbnail={img.thumbnail_url}
+                alt={img.filename}
+                width={img.width}
+                height={img.height}
+                onClick={() => handleImageClick(index)}
+                objectFit="cover"
+                className="aspect-[3/4]"
+              />
+            </div>
           ))}
         </div>
       );
     }
 
+    // Three images - one large, two small
     if (count === 3) {
       return (
-        <div className="grid grid-cols-2 gap-2 max-w-[600px]">
-          <ProgressiveImage
-            src={images[0].url}
-            thumbnail={images[0].thumbnail_url}
-            alt={images[0].filename}
-            width={images[0].width}
-            height={images[0].height}
-            onClick={() => handleImageClick(0)}
-            className="col-span-2"
-          />
-          {images.slice(1).map((img, index) => (
+        <div className="flex gap-1 max-w-[500px]">
+          <div className="flex-1">
             <ProgressiveImage
-              key={index + 1}
-              src={img.url}
-              thumbnail={img.thumbnail_url}
-              alt={img.filename}
-              width={img.width}
-              height={img.height}
-              onClick={() => handleImageClick(index + 1)}
-              className="aspect-square"
+              src={images[0].url}
+              thumbnail={images[0].thumbnail_url}
+              alt={images[0].filename}
+              width={images[0].width}
+              height={images[0].height}
+              onClick={() => handleImageClick(0)}
+              objectFit="cover"
+              className="h-full"
             />
-          ))}
+          </div>
+          <div className="flex flex-col gap-1 flex-1">
+            {images.slice(1).map((img, index) => (
+              <ProgressiveImage
+                key={index + 1}
+                src={img.url}
+                thumbnail={img.thumbnail_url}
+                alt={img.filename}
+                width={img.width}
+                height={img.height}
+                onClick={() => handleImageClick(index + 1)}
+                objectFit="cover"
+                className="flex-1"
+              />
+            ))}
+          </div>
         </div>
       );
     }
 
+    // Four images - 2x2 grid
     if (count === 4) {
       return (
-        <div className="grid grid-cols-2 gap-2 max-w-[600px]">
+        <div className="grid grid-cols-2 gap-1 max-w-[500px]">
           {images.map((img, index) => (
             <ProgressiveImage
               key={index}
@@ -113,6 +126,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
               width={img.width}
               height={img.height}
               onClick={() => handleImageClick(index)}
+              objectFit="cover"
               className="aspect-square"
             />
           ))}
@@ -120,8 +134,9 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
       );
     }
 
+    // More than 4 - show first 4 with +N overlay
     return (
-      <div className="grid grid-cols-2 gap-2 max-w-[600px]">
+      <div className="grid grid-cols-2 gap-1 max-w-[500px]">
         {images.slice(0, 3).map((img, index) => (
           <ProgressiveImage
             key={index}
@@ -131,13 +146,11 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
             width={img.width}
             height={img.height}
             onClick={() => handleImageClick(index)}
-            className={cn(
-              'aspect-square',
-              index === 0 && 'col-span-2'
-            )}
+            objectFit="cover"
+            className="aspect-square"
           />
         ))}
-        {count > 4 && (
+        {count > 3 && (
           <div
             className="relative aspect-square cursor-pointer"
             onClick={() => handleImageClick(3)}
@@ -148,12 +161,15 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
               alt={images[3].filename}
               width={images[3].width}
               height={images[3].height}
+              objectFit="cover"
             />
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center rounded-xl">
-              <span className="text-white text-3xl font-semibold">
-                +{count - 4}
-              </span>
-            </div>
+            {count > 4 && (
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] flex items-center justify-center rounded-lg">
+                <span className="text-white text-2xl font-medium">
+                  +{count - 4}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -162,7 +178,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ images, className }) => {
 
   return (
     <>
-      <div className={cn('my-3', className)}>{renderImages()}</div>
+      <div className={cn('my-2', className)}>{renderImages()}</div>
 
       <ImageLightbox
         isOpen={lightboxOpen}

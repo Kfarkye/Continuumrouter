@@ -359,29 +359,44 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       tabIndex={-1}
       role="listitem"
     >
-      {/* The Bubble itself */}
-      <motion.div
-        className={bubbleClasses}
-        // Constrained width
-        style={{ maxWidth: isUser ? '85%' : '100%' }}
-        initial={isLatest ? "hidden" : "visible"} // Only animate the entry of the latest message
-        animate="visible"
-        variants={bubbleVariants}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-      >
-        {/* Error State Rendering (Inside the bubble) */}
-        {isError && (
-          <div className="flex items-center gap-3 font-medium">
-            <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span>An error occurred. {message.content}</span>
-          </div>
+      {/* Container for images and bubble */}
+      <div className="flex flex-col gap-2" style={{ maxWidth: isUser ? '85%' : '100%' }}>
+        {/* Image Attachments - Displayed ABOVE text for user messages, inline flow */}
+        {isUser && message.files && message.files.length > 0 && (
+          <ImageGrid
+            images={message.files
+              .filter(file => file.url && (file.type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)))
+              .map(file => ({
+                url: file.url!,
+                thumbnail_url: file.url,
+                filename: file.name,
+                width: 800,
+                height: 600,
+              }))}
+          />
         )}
-        {/* Content Rendering */}
-        {!isError && (
-          isUser ? (
-            // User messages are rendered as plain text
-            <div className="whitespace-pre-wrap break-words">{message.content}</div>
-          ) : (
+
+        {/* The Bubble itself */}
+        <motion.div
+          className={bubbleClasses}
+          initial={isLatest ? "hidden" : "visible"}
+          animate="visible"
+          variants={bubbleVariants}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        >
+          {/* Error State Rendering (Inside the bubble) */}
+          {isError && (
+            <div className="flex items-center gap-3 font-medium">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <span>An error occurred. {message.content}</span>
+            </div>
+          )}
+          {/* Content Rendering */}
+          {!isError && (
+            isUser ? (
+              // User messages are rendered as plain text
+              <div className="whitespace-pre-wrap break-words">{message.content}</div>
+            ) : (
             <>
               {/* Assistant: Render search results first if present */}
               {message.search_results && message.search_results.length > 0 && (
@@ -422,24 +437,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
                 // Loading state when content is empty but streaming
                 isMessageStreaming && <TypingIndicator />
               )}
+              {/* Assistant: Display images inline after content */}
+              {message.files && message.files.length > 0 && (
+                <div className="mt-3">
+                  <ImageGrid
+                    images={message.files
+                      .filter(file => file.url && (file.type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)))
+                      .map(file => ({
+                        url: file.url!,
+                        thumbnail_url: file.url,
+                        filename: file.name,
+                        width: 800,
+                        height: 600,
+                      }))}
+                  />
+                </div>
+              )}
             </>
           )
         )}
-      </motion.div>
-      {/* Image Attachments - Displayed outside bubble for better presentation */}
-      {message.files && message.files.length > 0 && (
-        <ImageGrid
-          images={message.files
-            .filter(file => file.url && (file.type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)))
-            .map(file => ({
-              url: file.url!,
-              thumbnail_url: file.url,
-              filename: file.name,
-              width: 800,
-              height: 600,
-            }))}
-        />
-      )}
+        </motion.div>
+      </div>
       {/* Footer: Action Bar and Metadata (Intelligent switching) */}
       <div className={`flex items-center gap-2 mt-1 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
         {/* Action Buttons (Appear below the bubble on hover/focus) */}
