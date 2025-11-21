@@ -1,12 +1,13 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { createClient, SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 import { encodeBase64 } from "https://deno.land/std@0.208.0/encoding/base64.ts";
+
 import { corsHeaders } from './_shared/cors.ts';
 import { handleSearchQuery } from './searchRouter.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONFIGURATION & VALIDATION
+// CONFIGURATION & VALIDATION (Fail-fast initialization)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const EnvSchema = z.object({
@@ -15,20 +16,34 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
-  LOG_LEVEL: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
+  LOG_LEVEL: z.enum(['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
+  DEBUG_SECRET_HEADER_VALUE: z.string().optional(),
   ENABLE_CIRCUIT_BREAKER: z.coerce.boolean().default(true),
   ENABLE_REQUEST_DEDUPLICATION: z.coerce.boolean().default(true),
   ENABLE_RATE_LIMITING: z.coerce.boolean().default(true),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
-let env: z.infer<typeof EnvSchema>;
-try {
-  env = EnvSchema.parse(Deno.env.toObject());
-} catch (error) {
-  console.error("[INIT] FATAL: Invalid environment configuration.", (error as z.ZodError).errors);
-  throw new Error("Configuration Error: Invalid environment variables.");
+type EnvConfig = z.infer<typeof EnvSchema>;
+
+function initializeEnvironment(): EnvConfig {
+  try {
+    return EnvSchema.parse(Deno.env.toObject());
+  } catch (error) {
+    const errorDetails = error instanceof z.ZodError ? error.errors : String(error);
+    console.error(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "FATAL",
+        message: "[INIT] Invalid environment configuration.",
+        details: errorDetails
+    }));
+    throw new Error("Configuration Error: Invalid environment variables.");
+  }
 }
+
+const env = initializeEnvironment();
+const SERVICE_NAME = "ai-chat-router";
+const DEPLOYMENT_REGION = Deno.env.get("DENO_REGION") || "unknown";
 
 const CONFIG = {
   API_CONNECT_TIMEOUT_MS: 15000,
@@ -36,29 +51,40 @@ const CONFIG = {
   STREAM_TOTAL_TIMEOUT_MS: 180000,
   MAX_RETRIES: 3,
   RETRY_BASE_DELAY_MS: 500,
+  RETRY_MIN_JITTER_DELAY_MS: 100,
   CIRCUIT_BREAKER_THRESHOLD: 5,
   CIRCUIT_BREAKER_TIMEOUT_MS: 60000,
+  CIRCUIT_BREAKER_RECOVERY_SUCCESSES: 3,
   MAX_MESSAGE_LENGTH: 50000,
   MAX_MESSAGES_COUNT: 100,
   MAX_IMAGE_COUNT: 10,
   MAX_IMAGE_SIZE_BYTES: 10 * 1024 * 1024,
+  MAX_TRACE_LOG_LENGTH: 5000,
   IMAGE_BUCKET_NAME: 'chat-uploads',
   RATE_LIMIT_WINDOW_MS: 60000,
   RATE_LIMIT_MAX_REQUESTS: 60,
   DEDUP_WINDOW_MS: 5000,
 } as const;
 
+const SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
+} as const;
+
 const RequestBodySchema = z.object({
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    content: z.string().max(CONFIG.MAX_MESSAGE_LENGTH),
+    content: z.string().min(1).max(CONFIG.MAX_MESSAGE_LENGTH),
   })).nonempty().max(CONFIG.MAX_MESSAGES_COUNT),
   conversationId: z.string().uuid().optional(),
   imageIds: z.array(z.string().uuid()).max(CONFIG.MAX_IMAGE_COUNT).optional(),
   mode: z.enum(['chat', 'search_assist']).optional().default('chat'),
+  idempotencyKey: z.string().max(255).optional(),
 });
 
-type ChatMessage = z.infer<typeof RequestBodySchema>['messages'][0];
+type RequestBody = z.infer<typeof RequestBodySchema>;
+type ChatMessage = RequestBody['messages'][0];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INITIALIZATION
@@ -68,93 +94,6 @@ const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_K
   auth: { persistSession: false }
 });
 const encoder = new TextEncoder();
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LOGGING & OBSERVABILITY
-// ═══════════════════════════════════════════════════════════════════════════
-
-const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
-const CURRENT_LOG_LEVEL = LOG_LEVELS[env.LOG_LEVEL];
-
-interface LogContext extends Record<string, unknown> {
-  requestId?: string;
-  userId?: string;
-  provider?: string;
-  traceId?: string;
-  spanId?: string;
-}
-
-function log(level: keyof typeof LOG_LEVELS, message: string, meta: LogContext = {}) {
-  if (LOG_LEVELS[level] >= CURRENT_LOG_LEVEL) {
-    const logEntry: Record<string, unknown> = {
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      ...meta
-    };
-
-    if (meta.error instanceof Error) {
-      logEntry.error = {
-        message: meta.error.message,
-        name: meta.error.name,
-        stack: meta.error.stack,
-      };
-      delete logEntry.error;
-    }
-
-    console.log(JSON.stringify(logEntry));
-  }
-}
-
-interface TraceContext {
-  traceId: string;
-  spanId: string;
-  parentSpanId?: string;
-}
-
-function createTraceContext(parentSpan?: string): TraceContext {
-  return {
-    traceId: crypto.randomUUID(),
-    spanId: crypto.randomUUID(),
-    parentSpanId: parentSpan,
-  };
-}
-
-class MetricsCollector {
-  private metrics: Map<string, number[]> = new Map();
-
-  record(metric: string, value: number) {
-    if (!this.metrics.has(metric)) {
-      this.metrics.set(metric, []);
-    }
-    const values = this.metrics.get(metric)!;
-    values.push(value);
-
-    if (values.length > 100) {
-      values.shift();
-    }
-  }
-
-  getPercentile(metric: string, percentile: number): number | null {
-    const values = this.metrics.get(metric);
-    if (!values || values.length === 0) return null;
-
-    const sorted = [...values].sort((a, b) => a - b);
-    const index = Math.ceil((percentile / 100) * sorted.length) - 1;
-    return sorted[index];
-  }
-
-  getAverage(metric: string): number | null {
-    const values = this.metrics.get(metric);
-    if (!values || values.length === 0) return null;
-
-    return values.reduce((sum, val) => sum + val, 0) / values.length;
-  }
-}
-
-const metrics = new MetricsCollector();
-
-log("INFO", "[INIT] AI Chat Router Initializing.");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ERROR DEFINITIONS
@@ -186,7 +125,7 @@ class AuthError extends AppError {
 
 class ProviderError extends AppError {
   constructor(public provider: string, public upstreamStatus: number, message: string) {
-    const retryable = upstreamStatus === 429 || upstreamStatus >= 500;
+    const retryable = upstreamStatus === 429 || (upstreamStatus >= 500 && upstreamStatus !== 501);
     super(`${provider} API error: ${message}`, 502, "UPSTREAM_API_ERROR", retryable);
   }
 }
@@ -205,9 +144,159 @@ class RateLimitError extends AppError {
 
 class CircuitBreakerError extends AppError {
   constructor(provider: string) {
-    super(`Circuit breaker open for ${provider}`, 503, "CIRCUIT_BREAKER_OPEN", true);
+    super(`Circuit breaker open for ${provider}. Service unavailable.`, 503, "CIRCUIT_BREAKER_OPEN", true);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOGGING & OBSERVABILITY
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LOG_LEVELS = { TRACE: -1, DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+const CURRENT_LOG_LEVEL = LOG_LEVELS[env.LOG_LEVEL];
+
+interface TraceContext {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+}
+
+interface RequestContext {
+  requestId: string;
+  trace: TraceContext;
+  userId?: string;
+  logLevel: number;
+  enableClientDebug: boolean;
+}
+
+interface LogContext extends Record<string, unknown> {
+  ctx?: RequestContext;
+  error?: unknown;
+  provider?: string;
+}
+
+function log(level: keyof typeof LOG_LEVELS, message: string, meta: LogContext = {}) {
+  const currentLogLevel = meta.ctx ? meta.ctx.logLevel : CURRENT_LOG_LEVEL;
+
+  if (LOG_LEVELS[level] < currentLogLevel) return;
+
+    const { error, ctx, ...restMeta } = meta;
+
+    const logEntry: Record<string, unknown> = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      service: SERVICE_NAME,
+      region: DEPLOYMENT_REGION,
+      requestId: ctx?.requestId,
+      traceId: ctx?.trace.traceId,
+      spanId: ctx?.trace.spanId,
+      userId: ctx?.userId,
+      ...restMeta
+    };
+
+    if (error instanceof Error) {
+      logEntry.error = {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        ...(error instanceof AppError && {
+            code: error.code,
+            status: error.status,
+            retryable: error.retryable
+        }),
+      };
+    } else if (error) {
+        logEntry.error = String(error);
+    }
+
+    const serializedLog = JSON.stringify(logEntry);
+
+    switch (level) {
+        case 'ERROR': console.error(serializedLog); break;
+        case 'WARN': console.warn(serializedLog); break;
+        default: console.log(serializedLog);
+    }
+}
+
+function createTraceContext(req: Request): TraceContext {
+  const traceparent = req.headers.get('traceparent');
+  if (traceparent) {
+    const parts = traceparent.split('-');
+    if (parts.length === 4 && parts[0] === '00' && parts[1].length === 32 && parts[2].length === 16) {
+        return {
+            traceId: parts[1],
+            spanId: crypto.randomUUID().replaceAll('-', '').substring(0, 16),
+            parentSpanId: parts[2],
+        };
+    }
+  }
+
+  return {
+    traceId: crypto.randomUUID().replaceAll('-', ''),
+    spanId: crypto.randomUUID().replaceAll('-', '').substring(0, 16),
+  };
+}
+
+function initializeRequestContext(req: Request): RequestContext {
+  const requestId = crypto.randomUUID();
+  const trace = createTraceContext(req);
+
+  let logLevel = CURRENT_LOG_LEVEL;
+  let enableClientDebug = false;
+
+  const debugHeaderValue = req.headers.get('X-Debug-Mode');
+
+  if (env.DEBUG_SECRET_HEADER_VALUE && debugHeaderValue === env.DEBUG_SECRET_HEADER_VALUE) {
+    logLevel = LOG_LEVELS.TRACE;
+    enableClientDebug = true;
+    console.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: "INFO",
+      message: "[DEBUG] Debug mode (TRACE level and Client Events) activated via header for this request.",
+      requestId,
+      traceId: trace.traceId,
+      service: SERVICE_NAME
+    }));
+  }
+
+  return {
+    requestId,
+    trace,
+    logLevel,
+    enableClientDebug,
+  };
+}
+
+class MetricsCollector {
+  private metrics: Map<string, number[]> = new Map();
+  private readonly MAX_SAMPLES = 100;
+
+  record(metric: string, value: number) {
+    if (!this.metrics.has(metric)) {
+      this.metrics.set(metric, []);
+    }
+    const values = this.metrics.get(metric)!;
+    values.push(value);
+
+    if (values.length > this.MAX_SAMPLES) {
+      values.shift();
+    }
+  }
+
+  getPercentile(metric: string, percentile: number): number | null {
+    const values = this.metrics.get(metric);
+    if (!values || values.length === 0) return null;
+
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = Math.ceil((percentile / 100) * sorted.length) - 1;
+    return sorted[index];
+  }
+}
+
+const metrics = new MetricsCollector();
+
+log("INFO", "[INIT] AI Chat Router Initializing.");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CIRCUIT BREAKER PATTERN
@@ -228,6 +317,7 @@ class CircuitBreaker {
   constructor(
     private threshold: number,
     private timeout: number,
+    private recoverySuccesses: number,
     private name: string
   ) {}
 
@@ -238,7 +328,7 @@ class CircuitBreaker {
 
     if (this.state === CircuitState.OPEN) {
       if (Date.now() - this.lastFailureTime >= this.timeout) {
-        log("INFO", `[CIRCUIT-BREAKER] Transitioning to HALF_OPEN`, { circuit: this.name });
+        log("INFO", `[CIRCUIT-BREAKER] Transitioning to HALF_OPEN, attempting recovery.`, { circuit: this.name });
         this.state = CircuitState.HALF_OPEN;
         this.successCount = 0;
       } else {
@@ -251,7 +341,9 @@ class CircuitBreaker {
       this.onSuccess();
       return result;
     } catch (error) {
-      this.onFailure();
+      if ((error instanceof AppError && error.retryable) || !(error instanceof AppError)) {
+          this.onFailure();
+      }
       throw error;
     }
   }
@@ -261,8 +353,8 @@ class CircuitBreaker {
 
     if (this.state === CircuitState.HALF_OPEN) {
       this.successCount++;
-      if (this.successCount >= 3) {
-        log("INFO", `[CIRCUIT-BREAKER] Closing circuit`, { circuit: this.name });
+      if (this.successCount >= this.recoverySuccesses) {
+        log("INFO", `[CIRCUIT-BREAKER] Closing circuit (Service Recovered).`, { circuit: this.name });
         this.state = CircuitState.CLOSED;
       }
     }
@@ -272,24 +364,28 @@ class CircuitBreaker {
     this.failureCount++;
     this.lastFailureTime = Date.now();
 
-    if (this.failureCount >= this.threshold) {
-      log("ERROR", `[CIRCUIT-BREAKER] Opening circuit`, {
+    if (this.state === CircuitState.HALF_OPEN || this.failureCount >= this.threshold) {
+      log("ERROR", `[CIRCUIT-BREAKER] Opening circuit (Service Failure Detected).`, {
         circuit: this.name,
-        failures: this.failureCount
+        failures: this.failureCount,
+        state: this.state
       });
       this.state = CircuitState.OPEN;
     }
   }
 
   getState(): CircuitState {
+    if (this.state === CircuitState.OPEN && (Date.now() - this.lastFailureTime >= this.timeout)) {
+        return CircuitState.HALF_OPEN;
+    }
     return this.state;
   }
 }
 
 const circuitBreakers = {
-  anthropic: new CircuitBreaker(CONFIG.CIRCUIT_BREAKER_THRESHOLD, CONFIG.CIRCUIT_BREAKER_TIMEOUT_MS, 'anthropic'),
-  openai: new CircuitBreaker(CONFIG.CIRCUIT_BREAKER_THRESHOLD, CONFIG.CIRCUIT_BREAKER_TIMEOUT_MS, 'openai'),
-  gemini: new CircuitBreaker(CONFIG.CIRCUIT_BREAKER_THRESHOLD, CONFIG.CIRCUIT_BREAKER_TIMEOUT_MS, 'gemini'),
+  anthropic: new CircuitBreaker(CONFIG.CIRCUIT_BREAKER_THRESHOLD, CONFIG.CIRCUIT_BREAKER_TIMEOUT_MS, CONFIG.CIRCUIT_BREAKER_RECOVERY_SUCCESSES, 'anthropic'),
+  openai: new CircuitBreaker(CONFIG.CIRCUIT_BREAKER_THRESHOLD, CONFIG.CIRCUIT_BREAKER_TIMEOUT_MS, CONFIG.CIRCUIT_BREAKER_RECOVERY_SUCCESSES, 'openai'),
+  gemini: new CircuitBreaker(CONFIG.CIRCUIT_BREAKER_THRESHOLD, CONFIG.CIRCUIT_BREAKER_TIMEOUT_MS, CONFIG.CIRCUIT_BREAKER_RECOVERY_SUCCESSES, 'gemini'),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -357,9 +453,12 @@ interface PendingRequest {
 class RequestDeduplicator {
   private pending: Map<string, PendingRequest> = new Map();
 
-  createKey(userId: string, messages: ChatMessage[]): string {
-    const lastMessage = messages[messages.length - 1];
-    return `${userId}:${lastMessage.content.substring(0, 100)}`;
+  async createKey(userId: string, body: RequestBody): Promise<string> {
+    const payload = JSON.stringify({ userId, messages: body.messages, imageIds: body.imageIds || [] });
+    const msgBuffer = encoder.encode(payload);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   async deduplicate(
@@ -374,7 +473,7 @@ class RequestDeduplicator {
 
     const existing = this.pending.get(key);
     if (existing && (now - existing.timestamp) < CONFIG.DEDUP_WINDOW_MS) {
-      log("INFO", "[DEDUP] Returning cached pending request", { key });
+      log("INFO", "[DEDUP] Returning cached pending request (Request In-Flight)", { key_hash: key.substring(0, 15) + '...' });
       return existing.promise;
     }
 
@@ -393,17 +492,23 @@ class RequestDeduplicator {
 
   cleanup() {
     const now = Date.now();
+    const cutoff = now - (CONFIG.STREAM_TOTAL_TIMEOUT_MS + 5000);
+    let count = 0;
     for (const [key, request] of this.pending.entries()) {
-      if (now - request.timestamp > CONFIG.DEDUP_WINDOW_MS) {
+      if (request.timestamp < cutoff) {
         this.pending.delete(key);
+        count++;
       }
+    }
+    if (count > 0) {
+        log("INFO", "[DEDUP-CLEANUP] Removed stalled requests", { count });
     }
   }
 }
 
 const deduplicator = new RequestDeduplicator();
 
-setInterval(() => deduplicator.cleanup(), 10000);
+setInterval(() => deduplicator.cleanup(), 60000);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ADAPTIVE TIMEOUT CALCULATOR
@@ -417,7 +522,7 @@ class AdaptiveTimeout {
     return Math.max(CONFIG.API_CONNECT_TIMEOUT_MS, p95 * 1.5);
   }
 
-  getStreamTimeout(provider: string): number {
+  getStreamInactivityTimeout(provider: string): number {
     const p95 = metrics.getPercentile(`${provider}_ttft`, 95);
     if (!p95) return CONFIG.STREAM_INACTIVITY_TIMEOUT_MS;
 
@@ -431,21 +536,28 @@ const adaptiveTimeout = new AdaptiveTimeout();
 // AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function authenticateUser(token: string, trace: TraceContext): Promise<{ id: string, email?: string }> {
+async function authenticateUser(token: string, ctx: RequestContext): Promise<{ id: string, email?: string }> {
   const startTime = performance.now();
 
   try {
+    log("DEBUG", "[AUTH] Attempting authentication", { ctx });
     const { data, error } = await supabaseAdmin.auth.getUser(token);
 
     if (error || !data.user) {
-      throw new AuthError("Invalid or expired token", "AUTH_INVALID_TOKEN", 403);
+      log("WARN", "[AUTH] Invalid or expired token", { ctx, error: error?.message });
+      throw new AuthError("Invalid or expired token", "AUTH_INVALID_TOKEN", 401);
     }
 
     metrics.record('auth_duration', performance.now() - startTime);
+    log("DEBUG", "[AUTH] Authentication successful", { ctx, userId: data.user.id });
     return { id: data.user.id, email: data.user.email };
 
   } catch (error) {
     metrics.record('auth_duration', performance.now() - startTime);
+    if (!(error instanceof AuthError)) {
+        log("ERROR", "[AUTH] Unexpected authentication service error", { ctx, error });
+        throw new AppError("Authentication service unavailable", 500, "AUTH_SERVICE_ERROR", true);
+    }
     throw error;
   }
 }
@@ -473,12 +585,6 @@ interface RouteProfile {
   enabled: boolean;
   costPer1kInput: number;
   costPer1kOutput: number;
-}
-
-interface TaskRouteResult {
-  taskType: string;
-  profile: RouteProfile;
-  reasoning: string;
 }
 
 const ROUTER_CONFIG: Record<string, RouteProfile> = {
@@ -520,76 +626,73 @@ const ROUTER_CONFIG: Record<string, RouteProfile> = {
   }
 };
 
-const DEFAULT_MODEL_KEY = 'gemini';
+const PREFERRED_MODEL_KEY = 'anthropic';
+const FALLBACK_MODEL_KEY = 'openai';
 
-const CODE_WORDS = new Set(['code', 'function', 'debug', 'implement', 'algorithm', 'typescript', 'error', 'bug', 'api', 'sql', 'javascript', 'python', 'rust']);
-const CREATIVE_WORDS = new Set(['write', 'story', 'poem', 'creative', 'blog', 'draft', 'idea', 'script', 'essay']);
+const CODE_WORDS = new Set(['code', 'function', 'debug', 'implement', 'algorithm', 'typescript', 'error', 'bug', 'api', 'sql', 'javascript', 'python', 'refactor']);
 
 function decideRoute(
   messages: ChatMessage[],
   imageCount: number,
-  trace: TraceContext
-): TaskRouteResult {
+  ctx: RequestContext
+): { taskType: string; profile: RouteProfile; reasoning: string } {
 
   const lastMessage = messages[messages.length - 1];
   const userText = lastMessage.content.toLowerCase();
 
-  const getProfile = (key: string, reason: string): TaskRouteResult => {
-    let profile = ROUTER_CONFIG[key];
+  log("DEBUG", "[ROUTER] Starting routing decision", { ctx, imageCount, messageLength: userText.length });
 
-    if (profile && profile.enabled) {
-      const breaker = circuitBreakers[profile.provider];
-      if (breaker.getState() === CircuitState.OPEN) {
-        log("WARN", `[ROUTER] Circuit breaker open for ${profile.provider}`, { traceId: trace.traceId });
-        profile = undefined as any;
-      }
-    }
-
-    if (profile && profile.enabled) {
-      return {
-        taskType: reason.split(' ')[0].toLowerCase(),
-        profile,
-        reasoning: `${reason} Routed to ${profile.provider} (${profile.model}).`
-      };
-    }
-
-    log("WARN", `[ROUTER] Preferred provider ${key} unavailable. Attempting fallback.`, { traceId: trace.traceId });
-
-    const fallbackKeys = [DEFAULT_MODEL_KEY, 'openai', 'anthropic', 'gemini']
-      .filter((k, i, arr) => k !== key && arr.indexOf(k) === i);
-
-    for (const fallbackKey of fallbackKeys) {
-      profile = ROUTER_CONFIG[fallbackKey];
-      if (profile && profile.enabled) {
-        const breaker = circuitBreakers[profile.provider];
-        if (breaker.getState() !== CircuitState.OPEN) {
-          return {
-            taskType: reason.split(' ')[0].toLowerCase(),
-            profile,
-            reasoning: `${reason} Fallback to ${profile.provider} (${profile.model}).`
-          };
+  const selectHealthyProfile = (keys: string[]): RouteProfile | undefined => {
+    for (const key of keys) {
+        const profile = ROUTER_CONFIG[key];
+        if (profile && profile.enabled) {
+            const breaker = circuitBreakers[profile.provider];
+            const state = breaker.getState();
+            if (state !== CircuitState.OPEN) {
+                log("DEBUG", `[ROUTER] Profile ${key} is healthy (State: ${state}) and enabled.`, { ctx });
+                return profile;
+            } else {
+                log("WARN", `[ROUTER] Provider ${profile.provider} circuit breaker is OPEN. Skipping.`, { ctx, modelKey: key });
+            }
+        } else {
+            log("DEBUG", `[ROUTER] Profile ${key} is disabled or missing.`, { ctx });
         }
-      }
     }
-
-    throw new AppError("Service Unavailable: No AI providers are currently enabled.", 503, "NO_PROVIDERS_AVAILABLE", false);
+    return undefined;
   };
 
+  let taskType = 'general';
+  let preferredKeys: string[] = [PREFERRED_MODEL_KEY, FALLBACK_MODEL_KEY];
+
   if (imageCount > 0) {
-    return getProfile('anthropic', `Vision task with ${imageCount} images.`);
+    taskType = 'vision';
+    preferredKeys = ['anthropic', 'openai', 'gemini'];
+  } else {
+    const words = userText.split(/\s+/);
+    if (words.some(word => CODE_WORDS.has(word))) {
+      taskType = 'code';
+      preferredKeys = ['anthropic', 'openai', 'gemini'];
+    }
   }
 
-  const words = userText.split(/\s+/);
+  let profile = selectHealthyProfile(preferredKeys);
+  let reasoning = `Task type: ${taskType}. Preferred models considered: [${preferredKeys.join(', ')}].`;
 
-  if (words.some(word => CODE_WORDS.has(word))) {
-    return getProfile('anthropic', 'Code-related task.');
+  if (!profile) {
+    log("WARN", `[ROUTER] All preferred providers unavailable for task ${taskType}. Attempting global fallback.`, { ctx });
+    const allKeys = Object.keys(ROUTER_CONFIG);
+    profile = selectHealthyProfile(allKeys);
+    reasoning += " Fallback required due to preferred model unavailability.";
   }
 
-  if (words.some(word => CREATIVE_WORDS.has(word))) {
-    return getProfile('openai', 'Creative writing task.');
+  if (!profile) {
+    log("ERROR", "[ROUTER] Service Unavailable: No AI providers available.", { ctx });
+    throw new AppError("Service Unavailable: No AI providers are currently operational.", 503, "NO_PROVIDERS_AVAILABLE", false);
   }
 
-  return getProfile(DEFAULT_MODEL_KEY, 'General conversation.');
+  reasoning += ` Routed to ${profile.provider} (${profile.model}).`;
+
+  return { taskType, profile, reasoning };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -600,40 +703,50 @@ async function retryOperation<T>(
   operation: () => Promise<T>,
   shouldRetry: (error: unknown) => boolean,
   maxRetries: number = CONFIG.MAX_RETRIES,
-  trace?: TraceContext
+  ctx?: RequestContext
 ): Promise<T> {
   let attempt = 0;
+  let lastError: unknown;
 
-  while (true) {
+  while (attempt < maxRetries) {
     attempt++;
+    log("DEBUG", "[RETRY] Attempt starting", { ctx, attempt, maxRetries });
     try {
       return await operation();
     } catch (error) {
+      lastError = error;
       const isRetryable = shouldRetry(error);
 
-      if (attempt >= maxRetries || !isRetryable) {
-        log("ERROR", "[RETRY] Operation failed permanently.", {
+      if (!isRetryable) {
+        log("INFO", "[RETRY] Operation failed permanently (non-retryable error).", {
           attempt,
           error,
-          traceId: trace?.traceId
+          ctx
         });
         throw error;
       }
 
-      const backoff = Math.pow(2, attempt - 1) * CONFIG.RETRY_BASE_DELAY_MS;
-      const jitter = Math.random() * 500;
-      const delay = backoff + jitter;
+      const baseDelay = Math.pow(2, attempt - 1) * CONFIG.RETRY_BASE_DELAY_MS;
+      const delay = Math.max(CONFIG.RETRY_MIN_JITTER_DELAY_MS, Math.random() * baseDelay);
 
       log("WARN", "[RETRY] Operation failed (transient), retrying...", {
         attempt,
+        maxRetries,
         delayMs: Math.round(delay),
         error,
-        traceId: trace?.traceId
+          ctx
       });
 
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
+
+  log("ERROR", "[RETRY] Max retries exceeded.", {
+    attempt,
+    error: lastError,
+    ctx
+  });
+  throw lastError;
 }
 
 const shouldRetryApiCall = (error: unknown): boolean => {
@@ -647,18 +760,18 @@ const shouldRetryApiCall = (error: unknown): boolean => {
 // STREAM PROCESSING
 // ═══════════════════════════════════════════════════════════════════════════
 
-type StreamParserResult = { chunk: string | null; usage: UsageMetrics | null };
+type StreamParserResult = { chunk: string | null; usage: Partial<UsageMetrics> | null };
 type StreamParser = (data: string) => StreamParserResult;
 
 function createSSEParser(
   parser: StreamParser,
   provider: Provider,
-  trace: TraceContext
+  ctx: RequestContext
 ): { transformer: TransformStream<Uint8Array, string>; usagePromise: Promise<UsageMetrics> } {
 
   const decoder = new TextDecoder();
   let buffer = '';
-  let metrics: UsageMetrics = { inputTokens: 0, outputTokens: 0 };
+  const metrics: UsageMetrics = { inputTokens: 0, outputTokens: 0 };
 
   let resolveUsage: (value: UsageMetrics) => void;
   const usagePromise = new Promise<UsageMetrics>((resolve) => {
@@ -677,28 +790,40 @@ function createSSEParser(
         const data = line.slice(6).trim();
         if (data === '[DONE]') continue;
 
+        log("TRACE", "[STREAM-IO] Raw SSE data received", {
+            ctx,
+            provider,
+            rawData: data.substring(0, CONFIG.MAX_TRACE_LOG_LENGTH)
+        });
+
         try {
           const result = parser(data);
 
           if (result.usage) {
-            metrics = result.usage;
+            if (result.usage.inputTokens !== undefined) {
+              metrics.inputTokens = result.usage.inputTokens;
+            }
+            if (result.usage.outputTokens !== undefined) {
+              metrics.outputTokens += result.usage.outputTokens;
+            }
           }
 
           if (result.chunk) {
             controller.enqueue(result.chunk);
           }
         } catch (e) {
-          log("ERROR", `[STREAM] Fatal error processing chunk`, {
-            provider,
+          log("ERROR", `[STREAM] Fatal error processing chunk from ${provider}`, {
             error: e,
-            traceId: trace.traceId
+            ctx,
+            rawDataSample: data.substring(0, 200)
           });
-          controller.error(e);
+          controller.error(new ProviderError(provider, 500, `Failed to parse stream data: ${(e as Error).message}`));
           return;
         }
       }
     },
     flush() {
+      log("DEBUG", "[STREAM] Flushing buffer and resolving usage metrics", { ctx, provider });
       resolveUsage(metrics);
     }
   });
@@ -715,16 +840,23 @@ async function callProviderAPI(
   payload: unknown,
   systemPrompt: string | undefined,
   clientSignal: AbortSignal,
-  trace: TraceContext
+  ctx: RequestContext
 ): Promise<{ stream: ReadableStream<string>; usagePromise: Promise<UsageMetrics> }> {
 
   const { provider, model, limits } = profile;
-  const connectionStart = performance.now();
+
+  log("DEBUG", "[API] Preparing to call provider API", {
+    ctx,
+    provider,
+    model,
+  });
 
   return retryOperation(async () => {
     return circuitBreakers[provider].execute(async () => {
       let response: Response;
       let parser: StreamParser;
+
+      const connectionStart = performance.now();
 
       const timeoutController = new AbortController();
       const connectionTimeout = adaptiveTimeout.getConnectionTimeout(provider);
@@ -733,14 +865,29 @@ async function callProviderAPI(
         "CONNECTION_TIMEOUT"
       );
 
-      const timeoutId = setTimeout(() => timeoutController.abort(timeoutError), connectionTimeout);
+      const timeoutId = setTimeout(() => {
+        timeoutController.abort(timeoutError);
+      }, connectionTimeout);
 
       const compositeSignal = AbortSignal.any([clientSignal, timeoutController.signal]);
 
       try {
         switch (provider) {
-          case 'anthropic':
-            if (!env.ANTHROPIC_API_KEY) throw new Error("Anthropic API Key Missing");
+          case 'anthropic': {
+            if (!env.ANTHROPIC_API_KEY) throw new AppError("Anthropic API Key Missing", 500, "CONFIG_ERROR", false);
+
+            const requestBody = JSON.stringify({
+                model,
+                max_tokens: limits.maxOutputTokens,
+                messages: payload,
+                stream: true,
+                system: systemPrompt
+            });
+
+            log("TRACE", "[API-IO] Sending Anthropic request payload", {
+                ctx,
+                requestBody: requestBody.substring(0, CONFIG.MAX_TRACE_LOG_LENGTH) + (requestBody.length > CONFIG.MAX_TRACE_LOG_LENGTH ? '... [TRUNCATED]' : '')
+            });
 
             response = await fetch('https://api.anthropic.com/v1/messages', {
               method: 'POST',
@@ -748,34 +895,26 @@ async function callProviderAPI(
                 'Content-Type': 'application/json',
                 'x-api-key': env.ANTHROPIC_API_KEY,
                 'anthropic-version': '2023-06-01',
-                'anthropic-trace-id': trace.traceId,
+                'anthropic-trace-id': ctx.trace.traceId,
               },
-              body: JSON.stringify({
-                model,
-                max_tokens: limits.maxOutputTokens,
-                messages: payload,
-                stream: true,
-                system: systemPrompt
-              }),
+              body: requestBody,
               signal: compositeSignal
             });
 
             parser = (data: string): StreamParserResult => {
               const parsed = JSON.parse(data);
               let chunk: string | null = null;
-              let usage: UsageMetrics | null = null;
+              let usage: Partial<UsageMetrics> | null = null;
 
               if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
                 chunk = parsed.delta.text;
               } else if (parsed.type === 'message_delta' && parsed.delta?.usage) {
                 usage = {
-                  inputTokens: 0,
                   outputTokens: parsed.delta.usage.output_tokens || 0
                 };
               } else if (parsed.type === 'message_start' && parsed.message?.usage) {
                 usage = {
                   inputTokens: parsed.message.usage.input_tokens || 0,
-                  outputTokens: 0
                 };
               } else if (parsed.type === 'error') {
                 throw new Error(`Anthropic Stream Error: ${parsed.error?.message}`);
@@ -784,31 +923,39 @@ async function callProviderAPI(
               return { chunk, usage };
             };
             break;
+          }
 
-          case 'openai':
-            if (!env.OPENAI_API_KEY) throw new Error("OpenAI API Key Missing");
+          case 'openai': {
+            if (!env.OPENAI_API_KEY) throw new AppError("OpenAI API Key Missing", 500, "CONFIG_ERROR", false);
+
+            const requestBody = JSON.stringify({
+                model,
+                messages: payload,
+                stream: true,
+                max_tokens: limits.maxOutputTokens,
+                stream_options: { include_usage: true }
+            });
+
+            log("TRACE", "[API-IO] Sending OpenAI request payload", {
+                ctx,
+                requestBody: requestBody.substring(0, CONFIG.MAX_TRACE_LOG_LENGTH) + (requestBody.length > CONFIG.MAX_TRACE_LOG_LENGTH ? '... [TRUNCATED]' : '')
+            });
 
             response = await fetch('https://api.openai.com/v1/chat/completions', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-                'X-Trace-Id': trace.traceId,
+                'X-Trace-Id': ctx.trace.traceId,
               },
-              body: JSON.stringify({
-                model,
-                messages: payload,
-                stream: true,
-                max_tokens: limits.maxOutputTokens,
-                stream_options: { include_usage: true }
-              }),
+              body: requestBody,
               signal: compositeSignal
             });
 
             parser = (data: string): StreamParserResult => {
               const parsed = JSON.parse(data);
               let chunk: string | null = null;
-              let usage: UsageMetrics | null = null;
+              let usage: Partial<UsageMetrics> | null = null;
 
               if (parsed?.choices?.[0]?.delta?.content) {
                 chunk = parsed.choices[0].delta.content;
@@ -824,9 +971,10 @@ async function callProviderAPI(
               return { chunk, usage };
             };
             break;
+          }
 
-          case 'gemini':
-            if (!env.GEMINI_API_KEY) throw new Error("Gemini API Key Missing");
+          case 'gemini': {
+            if (!env.GEMINI_API_KEY) throw new AppError("Gemini API Key Missing", 500, "CONFIG_ERROR", false);
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${env.GEMINI_API_KEY}&alt=sse`;
 
@@ -839,20 +987,27 @@ async function callProviderAPI(
               geminiBody.systemInstruction = { parts: [{ text: systemPrompt }] };
             }
 
+            const requestBody = JSON.stringify(geminiBody);
+
+            log("TRACE", "[API-IO] Sending Gemini request payload", {
+                ctx,
+                requestBody: requestBody.substring(0, CONFIG.MAX_TRACE_LOG_LENGTH) + (requestBody.length > CONFIG.MAX_TRACE_LOG_LENGTH ? '... [TRUNCATED]' : '')
+            });
+
             response = await fetch(url, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'X-Trace-Id': trace.traceId,
+                'X-Cloud-Trace-Context': `${ctx.trace.traceId}/${ctx.trace.spanId};o=1`,
               },
-              body: JSON.stringify(geminiBody),
+              body: requestBody,
               signal: compositeSignal
             });
 
             parser = (data: string): StreamParserResult => {
               const parsed = JSON.parse(data);
               let chunk: string | null = null;
-              let usage: UsageMetrics | null = null;
+              let usage: Partial<UsageMetrics> | null = null;
 
               const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
               if (text) chunk = text;
@@ -875,16 +1030,19 @@ async function callProviderAPI(
               return { chunk, usage };
             };
             break;
+          }
 
           default:
             throw new Error(`Unsupported provider: ${provider}`);
         }
       } catch (error) {
-        if ((error as Error).name === 'AbortError') {
-          if (clientSignal.aborted) {
-            throw new AppError("Client disconnected during API connection.", 499, "CLIENT_DISCONNECTED", false);
-          }
-          throw timeoutError;
+        if (compositeSignal.aborted) {
+            if (error === timeoutError) {
+                throw timeoutError;
+            }
+            if (clientSignal.aborted) {
+                throw new AppError("Client disconnected during API connection.", 499, "CLIENT_DISCONNECTED", false);
+            }
         }
         throw error;
       } finally {
@@ -893,20 +1051,30 @@ async function callProviderAPI(
       }
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => "Failed to read error body");
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, key) => { headers[key] = value; });
+
+        const errorText = await response.text().catch(() => "Failed to read upstream error body");
+        log("ERROR", "[API] Upstream API returned non-OK status", {
+          ctx,
+          provider,
+          status: response.status,
+          upstreamHeaders: headers,
+          errorBodySample: errorText.substring(0, 500)
+        });
         throw new ProviderError(provider, response.status, errorText);
       }
 
       if (!response.body) {
-        throw new ProviderError(provider, 500, "No response body received.");
+        throw new ProviderError(provider, 500, "No response body received from upstream.");
       }
 
-      const { transformer, usagePromise } = createSSEParser(parser, provider, trace);
+      const { transformer, usagePromise } = createSSEParser(parser, provider, ctx);
       const stream = response.body.pipeThrough(transformer);
 
       return { stream, usagePromise };
     });
-  }, shouldRetryApiCall, CONFIG.MAX_RETRIES, trace);
+  }, shouldRetryApiCall, CONFIG.MAX_RETRIES, ctx);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -918,12 +1086,25 @@ function sendSSE(controller: ReadableStreamDefaultController, eventType: string,
     const payload = typeof data === 'string' ? data : JSON.stringify(data);
     controller.enqueue(encoder.encode(`event: ${eventType}\ndata: ${payload}\n\n`));
   } catch (e) {
-    log("WARN", "[SSE] Failed to send SSE event (controller closed)");
+    log("DEBUG", "[SSE] Failed to send SSE event (controller likely closed).");
   }
 }
 
-async function getDomainContext(userId: string, trace: TraceContext): Promise<string | null> {
+function sendDebugEvent(controller: ReadableStreamDefaultController, ctx: RequestContext, stage: string, details: Record<string, unknown>) {
+  if (!ctx.enableClientDebug) return;
+
+  log("DEBUG", `[DEBUG-EVENT] Sending client debug event for stage: ${stage}`, { ctx });
+
+  sendSSE(controller, 'debug', {
+    timestamp: new Date().toISOString(),
+    stage,
+    details,
+  });
+}
+
+async function getDomainContext(userId: string, ctx: RequestContext): Promise<string | null> {
   try {
+    log("DEBUG", "[CONTEXT] Fetching domain context", { ctx });
     return await retryOperation(async () => {
       const { data, error } = await supabaseAdmin
         .from('clinician_profiles')
@@ -932,22 +1113,29 @@ async function getDomainContext(userId: string, trace: TraceContext): Promise<st
         .maybeSingle();
 
       if (error) throw error;
-      if (!data) return null;
+      if (!data) {
+        log("DEBUG", "[CONTEXT] No domain context found for user.", { ctx });
+        return null;
+      }
 
+      log("DEBUG", "[CONTEXT] Domain context fetched successfully.", { ctx });
       return `User Context: Healthcare recruiter managing clinician ${data.full_name}. Specialty: ${data.specialty || 'N/A'}.`;
     }, (error) => {
-      return !(error instanceof Error && 'code' in error && typeof error.code === 'string' && error.code.startsWith('PGRST'));
-    }, 2, trace);
+      const isPostgrestError = error instanceof Error && 'code' in error && typeof error.code === 'string' && error.code.startsWith('PGRST');
+      return !isPostgrestError;
+    }, 2, ctx);
   } catch (error) {
-    log("ERROR", "[CONTEXT] Error fetching domain context", { error, traceId: trace.traceId });
+    log("ERROR", "[CONTEXT] Error fetching domain context, proceeding without it.", { error, ctx });
     return null;
   }
 }
 
 const VALID_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
-async function fetchAndEncodeImages(imageIds: string[], userId: string, trace: TraceContext): Promise<Array<{ media_type: string; data: string }>> {
+async function fetchAndEncodeImages(imageIds: string[], userId: string, ctx: RequestContext): Promise<Array<{ media_type: string; data: string }>> {
   if (!imageIds || imageIds.length === 0) return [];
+
+  log("DEBUG", "[IMAGES] Fetching and validating images", { ctx, imageIds });
 
   const { data: imageRecords, error } = await supabaseAdmin
     .from('uploaded_images')
@@ -955,21 +1143,23 @@ async function fetchAndEncodeImages(imageIds: string[], userId: string, trace: T
     .in('id', imageIds)
     .eq('user_id', userId);
 
-  if (error || !imageRecords || imageRecords.length === 0) {
-    log("ERROR", "[IMAGES] Failed to fetch image records", { error, userId, traceId: trace.traceId });
+  if (error || !imageRecords || imageRecords.length !== imageIds.length) {
+    log("ERROR", "[IMAGES] Failed to fetch image records or unauthorized access attempt", { error, ctx, requestedIds: imageIds.length, foundCount: imageRecords?.length });
     return [];
   }
+
+  log("DEBUG", "[IMAGES] Image metadata fetched and ownership validated.", { ctx, count: imageRecords.length });
 
   const downloadPromises = imageRecords.map(async (record) => {
     if (!record.storage_path || !record.mime_type) return null;
 
     if (!VALID_MIME_TYPES.has(record.mime_type)) {
-      log("WARN", "[IMAGES] Unsupported MIME type", { mime: record.mime_type, id: record.id });
+      log("WARN", "[IMAGES] Unsupported MIME type", { mime: record.mime_type, id: record.id, ctx });
       return null;
     }
 
     if (record.size && record.size > CONFIG.MAX_IMAGE_SIZE_BYTES) {
-      log("WARN", "[IMAGES] Image exceeds size limit (metadata)", { size: record.size, id: record.id });
+      log("WARN", "[IMAGES] Image exceeds size limit (metadata)", { size: record.size, id: record.id, ctx });
       return null;
     }
 
@@ -978,12 +1168,12 @@ async function fetchAndEncodeImages(imageIds: string[], userId: string, trace: T
       .download(record.storage_path);
 
     if (downloadError || !fileData) {
-      log("ERROR", `[IMAGES] Failed to download image`, { id: record.id, error: downloadError });
+      log("ERROR", `[IMAGES] Failed to download image`, { id: record.id, error: downloadError, ctx });
       return null;
     }
 
     if (fileData.size > CONFIG.MAX_IMAGE_SIZE_BYTES) {
-      log("WARN", "[IMAGES] Downloaded image exceeds size limit", { size: fileData.size, id: record.id });
+      log("WARN", "[IMAGES] Downloaded image exceeds size limit", { size: fileData.size, id: record.id, ctx });
       return null;
     }
 
@@ -992,7 +1182,7 @@ async function fetchAndEncodeImages(imageIds: string[], userId: string, trace: T
       const base64 = encodeBase64(arrayBuffer);
       return { media_type: record.mime_type, data: base64 };
     } catch (error) {
-      log("ERROR", `[IMAGES] Failed to encode image`, { id: record.id, error });
+      log("ERROR", `[IMAGES] Failed to encode image`, { id: record.id, error, ctx });
       return null;
     }
   });
@@ -1070,15 +1260,18 @@ function formatMessagesForProvider(
 // DATABASE PERSISTENCE
 // ═══════════════════════════════════════════════════════════════════════════
 
-function persistMessage(requestId: string, messageData: Record<string, unknown>) {
+function persistMessage(requestId: string, messageData: Record<string, unknown>, ctx?: RequestContext) {
+  log("DEBUG", "[DB-ASYNC] Attempting to persist message", { ctx, requestId });
   supabaseAdmin.from('ai_messages').insert(messageData)
     .then(({ error }) => {
       if (error) {
-        log("ERROR", "[DB-ASYNC] Failed to persist message", { requestId, error });
+        log("ERROR", "[DB-ASYNC] Failed to persist message", { requestId, error, ctx });
+      } else {
+        log("DEBUG", "[DB-ASYNC] Message persistence successful", { ctx, requestId });
       }
     })
     .catch(err => {
-      log("ERROR", "[DB-ASYNC] Unexpected error during persistence", { requestId, error: err });
+      log("ERROR", "[DB-ASYNC] Unexpected error during persistence", { requestId, error: err, ctx });
     });
 }
 
@@ -1089,61 +1282,126 @@ function calculateCost(usage: UsageMetrics, profile: RouteProfile): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// HEALTH CHECK ENDPOINT
+// ═══════════════════════════════════════════════════════════════════════════
+
+function handleHealthCheck(headers: Record<string, string>): Response {
+    log("INFO", "[HEALTH] Health check initiated.");
+
+    const providerStatus = Object.entries(circuitBreakers).map(([name, breaker]) => ({
+        name,
+        state: breaker.getState(),
+        enabled: Object.values(ROUTER_CONFIG).some(p => p.provider === name as Provider && p.enabled),
+    }));
+
+    const allHealthy = providerStatus.every(p => p.state === CircuitState.CLOSED || !p.enabled);
+
+    const status = allHealthy ? 200 : 503;
+
+    const responseBody = {
+        status: allHealthy ? "OK" : "DEGRADED",
+        timestamp: new Date().toISOString(),
+        service: SERVICE_NAME,
+        region: DEPLOYMENT_REGION,
+        log_level: env.LOG_LEVEL,
+        dependencies: {
+            providers: providerStatus
+        }
+    };
+
+    return new Response(JSON.stringify(responseBody, null, 2), {
+        status,
+        headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN HANDLER
 // ═══════════════════════════════════════════════════════════════════════════
 
 Deno.serve(async (req: Request) => {
-  const requestId = crypto.randomUUID();
   const requestStartTime = performance.now();
-  const trace = createTraceContext();
+  const url = new URL(req.url);
+
+  const responseHeaders: Record<string, string> = {
+    ...corsHeaders,
+    ...SECURITY_HEADERS,
+  };
+
+  if (req.method === 'GET' && url.pathname === '/health') {
+    return handleHealthCheck(responseHeaders);
+  }
+
+  const ctx = initializeRequestContext(req);
+  const { requestId, trace } = ctx;
+
+  responseHeaders['X-Request-ID'] = requestId;
+  responseHeaders['X-Trace-ID'] = trace.traceId;
 
   const requestController = new AbortController();
   req.signal.addEventListener('abort', () => {
-    log("WARN", "[REQUEST] Client disconnected", { requestId, traceId: trace.traceId });
+    log("WARN", "[REQUEST] Client disconnected (signal)", { ctx });
     requestController.abort("Client disconnected");
-  });
+  }, { once: true });
 
   log("INFO", "[REQUEST] Incoming", {
     method: req.method,
-    url: req.url,
-    requestId,
-    traceId: trace.traceId
+    path: url.pathname,
+    ctx
   });
 
+  if (ctx.enableClientDebug) {
+    responseHeaders['X-Debug-Mode-Active'] = 'true';
+  }
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+    return new Response(null, { headers: responseHeaders, status: 204 });
   }
 
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new AuthError("Authorization header missing or malformed", "AUTH_HEADER_INVALID");
+      throw new AuthError("Authorization header missing or malformed", "AUTH_HEADER_INVALID", 401);
     }
     const token = authHeader.substring(7);
 
-    const authPromise = authenticateUser(token, trace);
+    const authPromise = authenticateUser(token, ctx);
     const bodyPromise = req.json().catch(() => {
-      throw new ValidationError("Invalid JSON payload");
+      throw new ValidationError("Invalid JSON payload or content type mismatch");
     });
 
     const [user, rawBody] = await Promise.all([authPromise, bodyPromise]);
+    ctx.userId = user.id;
+
+    log("DEBUG", "[REQUEST] Body parsed and user authenticated", {
+      ctx,
+      rawBodySize: JSON.stringify(rawBody).length
+    });
 
     await rateLimiter.checkLimit(user.id);
+    responseHeaders['X-RateLimit-Remaining'] = rateLimiter.getRemainingRequests(user.id).toString();
+    responseHeaders['X-RateLimit-Limit'] = CONFIG.RATE_LIMIT_MAX_REQUESTS.toString();
 
     const validationResult = RequestBodySchema.safeParse(rawBody);
     if (!validationResult.success) {
+      log("WARN", "[VALIDATION] Request validation failed", { ctx, errors: validationResult.error.format() });
       throw new ValidationError("Invalid request structure", validationResult.error.format());
     }
-    const { messages, conversationId, imageIds, mode } = validationResult.data;
+    const requestData = validationResult.data;
+    const { messages, conversationId, imageIds, mode } = requestData;
 
     const lastUserMessage = messages[messages.length - 1];
     if (lastUserMessage.role !== 'user') {
-      throw new ValidationError("Last message must be from user");
+      throw new ValidationError("Last message must be from the user role.");
     }
 
     const searchTriggers = [/^search[: ]/i, /^find[: ]/i, /what (is|are) the latest/i];
     if (mode === 'search_assist' || searchTriggers.some(t => t.test(lastUserMessage.content))) {
-      log("INFO", "[ROUTER] Search query detected", { requestId, traceId: trace.traceId });
+      log("INFO", "[ROUTER] Search query detected, delegating.", { ctx });
       return await handleSearchQuery({
         query: lastUserMessage.content,
         conversationId,
@@ -1155,24 +1413,24 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const dedupKey = deduplicator.createKey(user.id, messages);
+    const dedupKey = await deduplicator.createKey(user.id, requestData);
+    log("DEBUG", "[DEDUP] Deduplication key generated", { ctx, keyHash: dedupKey.substring(0, 15) + '...' });
 
     return await deduplicator.deduplicate(dedupKey, async () => {
-      const [images, domainContext] = await Promise.all([
-        fetchAndEncodeImages(imageIds || [], user.id, trace),
-        getDomainContext(user.id, trace)
-      ]);
+      const dedupStartTime = performance.now();
 
-      const { taskType, profile, reasoning } = decideRoute(messages, images.length, trace);
+      log("DEBUG", "[DATA] Starting parallel data fetching (Images and Context)", { ctx });
+      const [images, domainContext] = await Promise.all([
+        fetchAndEncodeImages(imageIds || [], user.id, ctx),
+        getDomainContext(user.id, ctx)
+      ]);
+      log("DEBUG", "[DATA] Parallel data fetching complete", { ctx, imagesCount: images.length, contextFound: !!domainContext });
+
+      const { taskType, profile, reasoning } = decideRoute(messages, images.length, ctx);
       const { provider, model } = profile;
 
       log("INFO", "[ROUTER] Decision", {
-        requestId,
-        provider,
-        model,
-        taskType,
-        reasoning,
-        traceId: trace.traceId
+        ctx, provider, model, taskType, reasoning
       });
 
       const systemPrompt = domainContext || "You are a helpful AI assistant.";
@@ -1190,76 +1448,129 @@ Deno.serve(async (req: Request) => {
             request_id: requestId,
             trace_id: trace.traceId
           }
-        });
+        }, ctx);
       }
 
       const stream = new ReadableStream({
         async start(controller) {
+          const streamControllerStartTime = performance.now();
+
+          sendDebugEvent(controller, ctx, 'INITIALIZATION', {
+            requestId: ctx.requestId,
+            traceId: ctx.trace.traceId,
+            userId: ctx.userId,
+            conversationId: conversationId || null,
+            environment: env.LOG_LEVEL,
+            region: DEPLOYMENT_REGION,
+            timings: {
+              requestStartToStreamStart: streamControllerStartTime - requestStartTime,
+              deduplicationOverhead: streamControllerStartTime - dedupStartTime,
+            }
+          });
+
+          sendDebugEvent(controller, ctx, 'ROUTING', {
+            taskType,
+            provider,
+            model,
+            reasoning,
+            circuitBreakerState: circuitBreakers[provider].getState(),
+            imageCount: images.length,
+            contextUsed: !!domainContext,
+          });
+
+          try {
+              const sanitizedPayload = JSON.parse(JSON.stringify(apiPayload));
+              if (Array.isArray(sanitizedPayload)) {
+                sanitizedPayload.forEach(msg => {
+                  if (typeof msg.content === 'string') {
+                    msg.content = msg.content.substring(0, 500) + (msg.content.length > 500 ? '...' : '');
+                  } else if (Array.isArray(msg.content)) {
+                    msg.content = msg.content.map((part: any) => {
+                      if (part.type === 'text' && part.text) {
+                        part.text = part.text.substring(0, 200) + (part.text.length > 200 ? '...' : '');
+                      } else if (part.type === 'image' || part.type === 'image_url' || part.inlineData) {
+                        return { type: 'image_placeholder', sanitized: true };
+                      }
+                      return part;
+                    });
+                  }
+                });
+              }
+
+              sendDebugEvent(controller, ctx, 'PAYLOAD_PREVIEW', {
+                systemPrompt: systemPrompt.substring(0, 500) + (systemPrompt.length > 500 ? '...' : ''),
+                messages: sanitizedPayload,
+              });
+          } catch (e) {
+            log("WARN", "[DEBUG-EVENT] Failed to sanitize payload for preview", { ctx, error: e });
+            sendDebugEvent(controller, ctx, 'PAYLOAD_PREVIEW', { error: "Failed to sanitize payload for preview." });
+          }
+
           let ttftMs = 0;
           let firstChunkReceived = false;
           let assistantResponseText = '';
           let finalUsage: UsageMetrics = { inputTokens: 0, outputTokens: 0 };
           let upstreamReader: ReadableStreamDefaultReader<string> | null = null;
+          let apiCallError: unknown = null;
 
           try {
             sendSSE(controller, 'metadata', {
-              provider,
-              model,
-              taskType,
-              reasoning,
-              requestId,
-              traceId: trace.traceId,
-              rateLimitRemaining: rateLimiter.getRemainingRequests(user.id)
+              provider, model, taskType, reasoning, requestId, traceId: trace.traceId,
             });
 
+            const apiCallStartTime = performance.now();
             const { stream: apiStream, usagePromise } = await callProviderAPI(
-              profile,
-              apiPayload,
-              systemPrompt,
-              requestController.signal,
-              trace
+              profile, apiPayload, systemPrompt, requestController.signal, ctx
             );
+            const apiConnectionTime = performance.now() - apiCallStartTime;
+
+            sendDebugEvent(controller, ctx, 'API_CONNECTION', {
+              status: 'Connected',
+              connectionTimeMs: apiConnectionTime,
+              adaptiveTimeouts: {
+                connection: adaptiveTimeout.getConnectionTimeout(provider),
+                inactivity: adaptiveTimeout.getStreamInactivityTimeout(provider),
+              }
+            });
 
             upstreamReader = apiStream.getReader();
 
             const streamStartTime = performance.now();
-            let lastChunkTime = streamStartTime;
-            const streamTimeout = adaptiveTimeout.getStreamTimeout(provider);
+            const streamInactivityTimeout = adaptiveTimeout.getStreamInactivityTimeout(provider);
 
             while (true) {
-              const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new TimeoutError('Stream inactivity timeout', "STREAM_INACTIVITY")), streamTimeout)
-              );
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new TimeoutError('Stream inactivity timeout', "STREAM_INACTIVITY")), streamInactivityTimeout)
+                );
 
-              const abortPromise = new Promise<never>((_, reject) => {
-                if (requestController.signal.aborted) {
-                  reject(new AppError("Client disconnected", 499, "CLIENT_DISCONNECTED", false));
-                  return;
+                const abortPromise = new Promise<never>((_, reject) => {
+                  if (requestController.signal.aborted) {
+                    reject(new AppError("Client disconnected", 499, "CLIENT_DISCONNECTED", false));
+                    return;
+                  }
+                  requestController.signal.addEventListener('abort', () => {
+                    reject(new AppError("Client disconnected", 499, "CLIENT_DISCONNECTED", false));
+                  }, { once: true });
+                });
+
+                const readPromise = upstreamReader.read();
+                let result: ReadableStreamReadResult<string>;
+
+                try {
+                  result = await Promise.race([readPromise, timeoutPromise, abortPromise]) as ReadableStreamReadResult<string>;
+                } catch (error) {
+                  if (error instanceof AppError && error.code === "CLIENT_DISCONNECTED") {
+                    log("WARN", "[STREAM] Client disconnected", { ctx });
+                  } else {
+                    log("ERROR", "[STREAM] Timeout", { ctx, provider });
+                  }
+                  upstreamReader.cancel().catch(() => {});
+                  throw error;
                 }
-                requestController.signal.addEventListener('abort', () => {
-                  reject(new AppError("Client disconnected", 499, "CLIENT_DISCONNECTED", false));
-                }, { once: true });
-              });
-
-              const readPromise = upstreamReader.read();
-              let result: ReadableStreamReadResult<string>;
-
-              try {
-                result = await Promise.race([readPromise, timeoutPromise, abortPromise]) as ReadableStreamReadResult<string>;
-              } catch (error) {
-                if (error instanceof AppError && error.code === "CLIENT_DISCONNECTED") {
-                  log("WARN", "[STREAM] Client disconnected", { requestId, traceId: trace.traceId });
-                } else {
-                  log("ERROR", "[STREAM] Timeout", { requestId, provider, traceId: trace.traceId });
-                }
-                upstreamReader.cancel().catch(() => {});
-                throw error;
-              }
 
               const { done, value: chunk } = result;
               if (done) break;
 
-              lastChunkTime = performance.now();
               assistantResponseText += chunk;
 
               if (!firstChunkReceived) {
@@ -1267,17 +1578,19 @@ Deno.serve(async (req: Request) => {
                 ttftMs = performance.now() - requestStartTime;
                 metrics.record(`${provider}_ttft`, ttftMs);
                 log("INFO", "[PERFORMANCE] TTFT", {
-                  requestId,
+                  ctx, ttftMs: Math.round(ttftMs), provider
+                });
+
+                sendDebugEvent(controller, ctx, 'TTFT', {
                   ttftMs: Math.round(ttftMs),
-                  provider,
-                  traceId: trace.traceId
+                  timeSinceConnection: performance.now() - streamStartTime,
                 });
               }
 
               sendSSE(controller, 'text', chunk);
 
               if (performance.now() - streamStartTime > CONFIG.STREAM_TOTAL_TIMEOUT_MS) {
-                log("ERROR", "[STREAM] Total timeout exceeded", { requestId, provider, traceId: trace.traceId });
+                log("ERROR", "[STREAM] Total timeout exceeded", { ctx, provider });
                 upstreamReader.cancel().catch(() => {});
                 throw new TimeoutError("Stream exceeded maximum duration", "STREAM_TOTAL_TIMEOUT");
               }
@@ -1290,10 +1603,9 @@ Deno.serve(async (req: Request) => {
                 finalUsage.totalCost = calculateCost(usage, profile);
 
                 log("INFO", "[USAGE] Metrics", {
-                  requestId,
+                  ctx,
                   provider,
                   ...finalUsage,
-                  traceId: trace.traceId
                 });
 
                 metrics.record(`${provider}_input_tokens`, usage.inputTokens);
@@ -1301,7 +1613,7 @@ Deno.serve(async (req: Request) => {
                 metrics.record(`${provider}_total_cost`, finalUsage.totalCost);
               }
             } catch (e) {
-              log("WARN", "[USAGE] Failed to collect metrics", { requestId, provider, error: e });
+              log("WARN", "[USAGE] Failed to collect metrics", { ctx, provider, error: e });
             }
 
             sendSSE(controller, 'done', {
@@ -1310,15 +1622,14 @@ Deno.serve(async (req: Request) => {
             });
 
           } catch (error) {
+            apiCallError = error;
+
             if (!(error instanceof AppError && error.code === "CLIENT_DISCONNECTED")) {
-              log("ERROR", "[STREAM] Critical error", {
-                requestId,
-                provider,
-                error,
-                traceId: trace.traceId
+              log("ERROR", "[STREAM] Critical error during streaming", {
+                ctx, provider, error
               });
 
-              const errorType = error instanceof TimeoutError ? 'timeout' :
+                const errorType = error instanceof TimeoutError ? 'timeout' :
                                error instanceof ProviderError ? 'provider_error' :
                                error instanceof CircuitBreakerError ? 'circuit_breaker' :
                                'internal_error';
@@ -1332,12 +1643,31 @@ Deno.serve(async (req: Request) => {
               });
             }
           } finally {
+            const durationMs = performance.now() - requestStartTime;
+
+            const errorDetails = apiCallError ? {
+              name: (apiCallError as Error).name || 'N/A',
+              message: (apiCallError as Error).message || 'N/A',
+              code: (apiCallError instanceof AppError) ? apiCallError.code : 'N/A',
+              status: (apiCallError instanceof AppError) ? apiCallError.status : 'N/A',
+            } : null;
+
+            sendDebugEvent(controller, ctx, 'REQUEST_SUMMARY', {
+              status: apiCallError ? 'Failed' : 'Success',
+              totalDurationMs: Math.round(durationMs),
+              ttftMs: Math.round(ttftMs),
+              provider,
+              model,
+              usage: finalUsage,
+              responseTextLength: assistantResponseText.length,
+              errorDetails: errorDetails,
+            });
+
             try {
               controller.close();
             } catch (e) {}
 
             if (assistantResponseText.trim() && conversationId) {
-              const durationMs = performance.now() - requestStartTime;
               persistMessage(requestId, {
                 conversation_id: conversationId,
                 role: 'assistant',
@@ -1355,39 +1685,38 @@ Deno.serve(async (req: Request) => {
                   trace_id: trace.traceId,
                   circuit_breaker_state: circuitBreakers[provider].getState()
                 }
-              });
+              }, ctx);
             }
 
-            metrics.record('request_duration', performance.now() - requestStartTime);
+            metrics.record('request_duration', durationMs);
             log("INFO", "[REQUEST] Completed", {
-              requestId,
-              durationMs: Math.round(performance.now() - requestStartTime),
-              traceId: trace.traceId
+              ctx,
+              status: 200,
+              durationMs: Math.round(durationMs),
             });
           }
         }
       });
 
       return new Response(stream, {
+        status: 200,
         headers: {
-          ...corsHeaders,
+          ...responseHeaders,
           'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-transform',
           'Connection': 'keep-alive',
-          'X-Request-ID': requestId,
-          'X-Trace-ID': trace.traceId,
-          'X-RateLimit-Remaining': rateLimiter.getRemainingRequests(user.id).toString()
         }
       });
     });
 
   } catch (error) {
+    const finalCtx = ctx || initializeRequestContext(req);
+
     if (!(error instanceof AppError && error.code === "CLIENT_DISCONNECTED")) {
-      log("ERROR", "[REQUEST] Failed", {
-        requestId,
-        error,
-        traceId: trace.traceId
-      });
+        log("ERROR", "[REQUEST] Failed (Synchronous Error)", {
+            ctx: finalCtx,
+            error,
+        });
     }
 
     let status = 500;
@@ -1405,14 +1734,14 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ error: message, details, requestId, code, traceId: trace.traceId }),
+      JSON.stringify({ error: message, details, requestId: finalCtx.requestId, code, traceId: finalCtx.trace.traceId }),
       {
         status,
         headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-          'X-Request-ID': requestId,
-          'X-Trace-ID': trace.traceId
+            ...responseHeaders,
+            'X-Request-ID': finalCtx.requestId,
+            'X-Trace-ID': finalCtx.trace.traceId,
+            'Content-Type': 'application/json',
         }
       }
     );
