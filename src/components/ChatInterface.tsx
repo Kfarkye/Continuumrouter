@@ -955,7 +955,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       hidden: { opacity: 0, y: 5 },
       show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } }
     };
-    const greeting = userName ? `Hello, ${userName}` : "Hello";
     return (
       <div className="flex flex-col h-full justify-between items-center px-4 sm:px-6 antialiased">
         <div className="flex-1"></div>
@@ -964,16 +963,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className='text-center max-w-2xl mx-auto'
+            className='text-center max-w-3xl mx-auto'
           >
-            <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white mb-6">
-              {greeting}
+            <h1 className="text-5xl md:text-7xl font-semibold tracking-tight text-white mb-8">
+              Hello
             </h1>
-            <h2 className="text-2xl md:text-3xl font-medium text-zinc-400 tracking-tight leading-relaxed">
-              How can I help you today?
-            </h2>
+
+            <blockquote className="text-xl md:text-2xl font-medium text-zinc-400 tracking-tight leading-relaxed italic mb-3">
+              "I started this gangsta shit, this the motherfkn thx i get"
+            </blockquote>
+
+            <p className="text-sm md:text-base text-zinc-600 font-medium tracking-wide">
+              — Ice Cube, "Hello"
+            </p>
           </motion.div>
         </div>
+
         <div className="w-full max-w-3xl mb-12">
           <motion.div
             className="flex flex-wrap justify-center gap-3"
