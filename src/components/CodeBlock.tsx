@@ -16,8 +16,14 @@ import React, {
 } from 'react';
 
 // Virtualization Libraries (Dependencies: react-window, react-virtualized-auto-sizer)
-import { FixedSizeList, ListChildComponentProps as RWListChildComponentProps } from 'react-window';
+import { List as FixedSizeList } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+
+// Define ListChildComponentProps locally since it's not exported
+interface RWListChildComponentProps {
+  index: number;
+  style: CSSProperties;
+}
 
 // Syntax Highlighting (Dependency: react-syntax-highlighter)
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
