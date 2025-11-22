@@ -1,11 +1,41 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "generated_at": "2025-11-22",
+  "last_verified": "2025-11-22",
   "system": {
     "name": "Continuum",
     "description": "Multi-lane AI workspace with DeepThink reasoning engine, multi-modal chat, and vertical-specific features",
     "type": "lanes_based_reasoning_system",
     "primary_domains": ["general_ai_chat", "deepthink_reasoning", "clinical_recruiting", "code_assistance"]
+  },
+  "constraints": {
+    "immutable_tables": [
+      "ai_lanes",
+      "space_runs",
+      "ai_runs",
+      "ai_artifacts",
+      "ai_run_checks",
+      "ai_cache",
+      "ai_cost_ledger"
+    ],
+    "do_not_modify": {
+      "deepthink_flow": "planner → evidence → solvers → verifier sequence is production-stable",
+      "cost_tracking": "ai_cost_ledger partitioning is production-deployed; do not change partition scheme",
+      "rls_policies": "All tables have RLS enabled; never disable RLS",
+      "pass_type_enum": "ai_pass_type enum values are: planner, retriever, reranker, solver, verifier_hybrid, verifier_llm",
+      "run_status_enum": "run_status enum values are: pending, running, success, error, cancelled"
+    },
+    "planned_only": {
+      "builder_vertical": "Design only - not yet implemented. Do not create migrations or functions for this.",
+      "sports_vertical": "Design only - not yet implemented. Do not create migrations or functions for this."
+    },
+    "migration_policy": "All schema changes require new migration files with timestamp prefix format YYYYMMDD_description.sql. Never modify existing migrations."
+  },
+  "integration_instructions": {
+    "for_bolt_new": "Load this manifest in system context at session start. Treat as source-of-truth for schema, functions, and flows. Always reference this manifest before proposing any architectural changes.",
+    "for_gemini": "This manifest defines the lanes-based architecture. Use it to understand: (1) how space_runs orchestrate ai_runs, (2) what tables exist and their relationships, (3) what edge functions are deployed, (4) what constraints cannot be violated. Do not invent tables/functions not present here unless explicitly asked to add new ones.",
+    "validation_required": "Before suggesting schema changes, verify the change doesn't conflict with immutable_tables or planned_only verticals. Check constraints section first.",
+    "query_patterns": "Reference common_queries section for established data access patterns. Follow these patterns when building new queries."
   },
   "stack": {
     "frontend": {
@@ -49,6 +79,36 @@
       "deepthink_execution": "user_query → space_run created → planner pass → evidence passes → N parallel solver passes → verifier selects winner → final_output",
       "simple_chat": "user_query → ai-chat-router → direct model call → streaming response",
       "lane_selection": "router analyzes query → selects lane (deepthink/simple) → routes to appropriate function"
+    }
+  },
+  "example_lane_config": {
+    "name": "deepthink_lane_gemini_v2_1_plus",
+    "description": "Production DeepThink lane using Gemini 1.5 Flash for all passes",
+    "config_json": {
+      "planner": {
+        "model": "gemini-1.5-flash-latest",
+        "temperature": 0.7,
+        "max_tokens": 2000
+      },
+      "retriever": {
+        "enabled": true,
+        "max_results": 10
+      },
+      "solver": {
+        "model": "gemini-1.5-flash-latest",
+        "temperature": 0.8,
+        "candidate_count": 3,
+        "max_tokens": 4000
+      },
+      "verifier": {
+        "model": "gemini-1.5-flash-latest",
+        "hybrid": true,
+        "deterministic_checks": true
+      },
+      "budget": {
+        "max_total_tokens": 50000,
+        "cost_cap_usd": 1.0
+      }
     }
   },
   "database": {
@@ -141,7 +201,8 @@
               "verifier_run_id": "FK to ai_runs (verifier pass)",
               "candidate_run_id": "FK to ai_runs (solver being verified)"
             },
-            "check_types": ["deterministic", "llm"]
+            "check_types": ["deterministic", "llm"],
+            "check_statuses": ["pass", "fail", "skip"]
           },
           "ai_cache": {
             "purpose": "Cached pass outputs with TTL for performance optimization",
@@ -172,19 +233,21 @@
               "ai_run_id": "FK to ai_runs",
               "user_id": "FK to auth.users"
             },
-            "partitioning": "Range partitioned by created_at (monthly), auto-created via pg_cron"
+            "partitioning": "Range partitioned by created_at (monthly), auto-created via pg_cron on 25th at 1 AM UTC"
           }
         },
         "chat_tables": {
           "ai_conversations": {
             "purpose": "Chat sessions/threads",
-            "key_columns": ["id", "user_id", "title", "created_at", "updated_at", "project_id", "preferred_provider", "mode"],
-            "modes": ["chat", "deepthink", "tutorial", "recruiter", "reply_assistant"]
+            "key_columns": ["id", "user_id", "session_id", "title", "created_at", "updated_at", "project_id", "preferred_provider", "mode"],
+            "modes": ["chat", "deepthink", "tutorial", "recruiter", "reply_assistant"],
+            "notes": "session_id is UUID for frontend tracking, id is database PK. Prefer session_id for lookups from frontend."
           },
           "ai_messages": {
             "purpose": "Individual messages in conversations",
             "key_columns": ["id", "conversation_id", "role", "content", "model", "created_at", "metadata"],
-            "roles": ["user", "assistant", "system"]
+            "roles": ["user", "assistant", "system"],
+            "notes": "metadata JSONB field stores provider info, token counts, image IDs, etc."
           }
         },
         "projects_spaces": {
@@ -198,23 +261,57 @@
           },
           "memories": {
             "purpose": "Individual memory entries with embeddings",
-            "key_columns": ["id", "space_id", "content", "embedding", "metadata", "created_at"]
+            "key_columns": ["id", "space_id", "content", "embedding", "metadata", "created_at"],
+            "notes": "embedding is vector type for semantic search"
           }
         },
         "clinical_recruiting": {
           "clinician_profiles": {
             "purpose": "Healthcare clinician profiles",
-            "key_columns": ["id", "user_id", "full_name", "email", "phone", "created_at"]
+            "key_columns": ["id", "user_id", "full_name", "email", "phone", "specialty", "license_state", "created_at"]
           },
           "assignments": {
             "purpose": "Clinician assignments to facilities",
-            "key_columns": ["id", "clinician_id", "user_id", "facility_name", "start_date", "end_date", "status", "created_at"]
+            "key_columns": ["id", "clinician_id", "user_id", "facility_name", "start_date", "end_date", "status", "created_at"],
+            "status_values": ["active", "completed", "cancelled"]
+          },
+          "clinician_communication_profiles": {
+            "purpose": "Communication preferences for clinicians (extends clinician_profiles)",
+            "key_columns": ["id", "clinician_id", "user_id", "communication_style", "notes", "last_contacted", "created_at", "updated_at"],
+            "communication_styles": ["warm_friendly", "direct_brief", "professional_formal", "casual_relaxed"],
+            "relationships": {
+              "clinician_id": "FK to clinician_profiles (unique constraint)"
+            }
+          },
+          "reply_threads": {
+            "purpose": "Conversation threads for reply assistant (weekly groupings)",
+            "key_columns": ["id", "user_id", "project_id", "title", "created_at", "updated_at"],
+            "relationships": {
+              "project_id": "FK to projects (nullable)"
+            }
+          },
+          "reply_messages": {
+            "purpose": "Individual messages within reply threads",
+            "key_columns": ["id", "thread_id", "user_id", "clinician_id", "message_type", "incoming_text", "user_goal", "generated_reply_1", "generated_reply_2", "selected_reply", "metadata", "created_at"],
+            "message_types": ["user_input", "ai_response", "system"],
+            "relationships": {
+              "thread_id": "FK to reply_threads",
+              "clinician_id": "FK to clinician_profiles (nullable)"
+            }
+          },
+          "clinician_interactions": {
+            "purpose": "Historical log of all interactions with clinicians",
+            "key_columns": ["id", "clinician_id", "user_id", "interaction_type", "interaction_summary", "outcome", "created_at"],
+            "interaction_types": ["text_reply", "phone_call", "email", "extension_request", "issue_resolution", "other"],
+            "relationships": {
+              "clinician_id": "FK to clinician_profiles"
+            }
           }
         },
         "storage_tables": {
           "uploaded_images": {
             "purpose": "Image attachments with Supabase Storage integration",
-            "key_columns": ["id", "user_id", "session_id", "conversation_id", "storage_path", "signed_url", "original_filename", "mime_type", "file_size"]
+            "key_columns": ["id", "user_id", "session_id", "conversation_id", "storage_path", "public_url", "signed_url", "original_filename", "mime_type", "file_size", "created_at"]
           },
           "stored_schemas": {
             "purpose": "Saved data structures/schemas",
@@ -228,6 +325,23 @@
             "purpose": "Code snippet library",
             "key_columns": ["id", "user_id", "title", "description", "language", "code", "tags", "created_at"]
           }
+        },
+        "learning_system": {
+          "tutorial_progress": {
+            "purpose": "User progress through tutorials",
+            "key_columns": ["id", "user_id", "tutorial_id", "completed_steps", "status", "created_at", "updated_at"]
+          },
+          "learning_exercises": {
+            "purpose": "Generated learning exercises",
+            "key_columns": ["id", "user_id", "topic", "difficulty", "exercise_data", "created_at"]
+          }
+        },
+        "observability_tables": {
+          "request_traces": {
+            "purpose": "Distributed tracing for debugging",
+            "key_columns": ["id", "trace_id", "parent_span_id", "span_name", "start_time", "end_time", "metadata"],
+            "notes": "Created by 20251120204415_create_minimal_tracing_core.sql"
+          }
         }
       }
     },
@@ -235,10 +349,49 @@
       "lanes_execution": "ai_lanes → space_runs → ai_runs → ai_artifacts + ai_run_checks",
       "chat_hierarchy": "projects → ai_conversations → ai_messages",
       "memory_hierarchy": "memory_spaces → memories",
-      "cost_tracking": "ai_runs → ai_cost_ledger"
+      "cost_tracking": "ai_runs → ai_cost_ledger",
+      "recruiting_flow": "clinician_profiles → assignments + clinician_communication_profiles + clinician_interactions",
+      "reply_flow": "reply_threads → reply_messages (with clinician_id FK)"
+    }
+  },
+  "common_queries": {
+    "get_user_space_runs": {
+      "description": "Fetch recent DeepThink executions for a user",
+      "sql": "SELECT * FROM space_runs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50"
+    },
+    "get_run_details": {
+      "description": "Get complete space_run with all ai_runs",
+      "sql": "SELECT sr.*, json_agg(ar.*) as ai_runs FROM space_runs sr LEFT JOIN ai_runs ar ON ar.space_run_id = sr.id WHERE sr.id = $1 GROUP BY sr.id"
+    },
+    "get_cost_by_user_last_30_days": {
+      "description": "Total USD cost per user in last 30 days",
+      "sql": "SELECT user_id, SUM(cost_usd) as total_cost FROM ai_cost_ledger WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY user_id ORDER BY total_cost DESC"
+    },
+    "get_conversation_history": {
+      "description": "Load messages for a conversation",
+      "sql": "SELECT id, role, content, created_at, metadata FROM ai_messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 50"
+    },
+    "get_conversation_by_session": {
+      "description": "Find conversation by frontend session_id",
+      "sql": "SELECT id, session_id, title FROM ai_conversations WHERE session_id = $1 AND user_id = $2"
+    },
+    "search_clinicians": {
+      "description": "Search clinicians by name or specialty",
+      "sql": "SELECT * FROM clinician_profiles WHERE user_id = $1 AND (full_name ILIKE $2 OR specialty ILIKE $2) ORDER BY created_at DESC"
     }
   },
   "edge_functions": {
+    "count": 8,
+    "list": [
+      "ai-chat-router",
+      "deepthink",
+      "memory-lanes",
+      "perplexity-search",
+      "exercise-generator",
+      "tutorial-generator",
+      "reply-generator",
+      "_shared"
+    ],
     "deepthink": {
       "location": "supabase/functions/deepthink/",
       "entry_point": "index.ts",
@@ -269,14 +422,15 @@
       "entry_point": "index.ts",
       "purpose": "Routes chat messages to appropriate lane or simple provider",
       "modules": {
-        "index.ts": "Main router logic",
+        "index.ts": "Main router logic with SSE streaming",
         "searchRouter.ts": "Search-specific routing (Perplexity integration)"
-      }
+      },
+      "notes": "Returns SSE stream with events: text, metadata, done, error, debug"
     },
     "support_functions": {
       "memory_lanes": {
         "location": "supabase/functions/memory-lanes/",
-        "purpose": "Memory system operations"
+        "purpose": "Memory system operations (store, retrieve, search)"
       },
       "perplexity_search": {
         "location": "supabase/functions/perplexity-search/",
@@ -284,15 +438,15 @@
       },
       "exercise_generator": {
         "location": "supabase/functions/exercise-generator/",
-        "purpose": "Generates learning exercises"
+        "purpose": "Generates learning exercises based on topics"
       },
       "tutorial_generator": {
         "location": "supabase/functions/tutorial-generator/",
-        "purpose": "Creates tutorial content"
+        "purpose": "Creates tutorial content for learning mode"
       },
       "reply_generator": {
         "location": "supabase/functions/reply-generator/",
-        "purpose": "Generates reply suggestions"
+        "purpose": "Generates reply suggestions for clinician communication"
       }
     },
     "shared": {
@@ -302,41 +456,50 @@
   "frontend": {
     "location": "src/",
     "entry_point": "main.tsx → App.tsx",
+    "file_counts": {
+      "total_typescript_files": 121,
+      "components": 50,
+      "hooks": 15,
+      "services": 10,
+      "utilities": 20,
+      "contexts": 3
+    },
     "structure": {
       "components": {
-        "total_count": 68,
         "key_interfaces": {
-          "ChatInterface.tsx": "Main chat UI (430 lines)",
-          "DeepThinkInterface.tsx": "Deep reasoning mode UI",
+          "ChatInterface.tsx": "Main chat UI with streaming, image upload, model selection",
+          "DeepThinkInterface.tsx": "Deep reasoning mode UI with pass visualization",
           "TutorialInterface.tsx": "Tutorial generation interface",
           "RecruiterDashboard.tsx": "Recruiter-specific dashboard",
           "ReplyAssistantInterface.tsx": "Reply generation interface"
         },
         "chat_components": [
-          "MessageList.tsx - Message container",
-          "MessageBubble.tsx - Individual message display (487 lines)",
-          "ChatInputArea.tsx - Message composition",
-          "TypingIndicator.tsx - Streaming indicator"
+          "MessageList.tsx - Message container with virtualization",
+          "MessageBubble.tsx - Individual message display with markdown/code/HTML preview",
+          "ChatInputArea.tsx - Message composition with file upload",
+          "TypingIndicator.tsx - Streaming indicator (3 animated dots)"
         ],
         "artifacts": [
-          "HTMLArtifact.tsx - HTML preview",
+          "HTMLArtifact.tsx - HTML preview in sandboxed iframe",
           "MermaidArtifact.tsx - Diagram rendering",
           "OpenAPIArtifact.tsx - API spec viewer"
         ],
         "images": [
-          "ImageGrid.tsx - Image gallery",
-          "ImageLightbox.tsx - Image viewer",
-          "ProgressiveImage.tsx - Progressive loading"
+          "ImageGrid.tsx - Image gallery with responsive layout",
+          "ImageLightbox.tsx - Full-screen image viewer",
+          "ProgressiveImage.tsx - Progressive loading with blur-up"
         ]
       },
       "hooks": {
-        "useAiRouterChat.ts": "Main chat orchestration hook",
+        "useAiRouterChat.ts": "Main chat orchestration hook with SSE streaming",
         "useDeepThink.ts": "DeepThink lane execution hook",
-        "useChatSession.ts": "Session management",
+        "useChatSession.ts": "Session management and persistence",
         "useSupabaseData.ts": "Data fetching from Supabase",
-        "useReplyAssistant.ts": "Reply generation",
+        "useReplyAssistant.ts": "Reply generation for recruiting",
         "useEmailComposer.ts": "Email composition",
-        "useLearningSystem.ts": "Learning/tutorial features"
+        "useLearningSystem.ts": "Learning/tutorial features",
+        "useCodeSnippets.ts": "Code snippet library management",
+        "useContextManager.ts": "Context resolution and management"
       },
       "contexts": {
         "ArtifactsContext.tsx": "Artifacts state management",
@@ -346,16 +509,19 @@
       "lib": {
         "aiRouter.ts": "Client-side model routing logic",
         "supabaseClient.ts": "Supabase client configuration",
-        "imageStorageService.ts": "Image upload/storage",
+        "imageStorageService.ts": "Image upload/storage with compression",
         "documentUpload.ts": "Document handling",
         "documentRetrieval.ts": "Document retrieval",
         "contextResolver.ts": "Context resolution for prompts"
       },
       "services": {
-        "contextService.ts": "Context management",
+        "contextService.ts": "Context management and token validation",
         "historyService.ts": "Chat history management",
         "memoryService.ts": "Memory system integration",
-        "searchService.ts": "Search functionality"
+        "searchService.ts": "Search functionality (web + internal)"
+      },
+      "config": {
+        "models.tsx": "Model configuration with provider keys and capabilities"
       }
     },
     "routes": {
@@ -373,17 +539,21 @@
     "anthropic": {
       "models": ["claude-3-5-sonnet-20240620"],
       "use_cases": ["Complex reasoning", "Code review", "Technical writing"],
-      "vision_capable": true
+      "vision_capable": true,
+      "provider_key": "claude-3-5-sonnet-20240620"
     },
     "google": {
       "models": ["gemini-1.5-flash-latest", "gemini-2.5-pro", "gemini-2.5-flash"],
       "use_cases": ["Fast responses", "Multimodal tasks", "DeepThink passes"],
-      "vision_capable": true
+      "vision_capable": true,
+      "provider_key": "gemini-1.5-flash-latest",
+      "notes": "Gemini 1.5 Flash is primary model for production DeepThink lanes"
     },
     "openai": {
-      "models": ["gpt-4o", "gpt-5"],
+      "models": ["gpt-4o"],
       "use_cases": ["Balanced performance", "Creative tasks", "General chat"],
-      "vision_capable": true
+      "vision_capable": true,
+      "provider_key": "gpt-4o"
     }
   },
   "routing_logic": {
@@ -415,27 +585,27 @@
       "space_runs": "Total lane executions by status",
       "ai_runs": "Pass executions by type and model",
       "pass_failures": "Failure rate by pass type",
-      "verify_score": "Verification quality scores",
+      "verify_score": "Verification quality scores (0-1 range)",
       "latency_p95": "95th percentile latency by pass",
-      "cache_hit_rate": "Cache effectiveness",
+      "cache_hit_rate": "Cache effectiveness percentage",
       "cost_by_user": "USD cost per user",
       "tokens_by_model": "Token usage by provider/model"
     },
     "logging": {
-      "space_runs_table": "Complete job execution logs with final_output",
+      "space_runs_table": "Complete job execution logs with final_output JSONB",
       "ai_runs_table": "Per-pass logs with input/output/tokens/latency",
-      "ai_artifacts_table": "Evidence gathering logs",
-      "ai_run_checks_table": "Verification check results"
+      "ai_artifacts_table": "Evidence gathering logs with source attribution",
+      "ai_run_checks_table": "Verification check results (pass/fail/skip)"
     },
     "automation": {
-      "cache_purge": "Daily pg_cron job at 3 AM UTC",
-      "partition_creation": "Monthly pg_cron job on 25th at 1 AM UTC"
+      "cache_purge": "Daily pg_cron job at 3 AM UTC - removes expired ai_cache entries",
+      "partition_creation": "Monthly pg_cron job on 25th at 1 AM UTC - creates next month's ai_cost_ledger partition"
     }
   },
   "planned_verticals": {
     "builder": {
       "status": "planned",
-      "description": "Code generation and IDE automation lanes",
+      "description": "Code generation and IDE automation lanes - DO NOT IMPLEMENT WITHOUT EXPLICIT REQUEST",
       "planned_lanes": [
         {
           "name": "builder_translation",
@@ -469,7 +639,7 @@
     },
     "sports": {
       "status": "planned",
-      "description": "Sports analytics and insights vertical"
+      "description": "Sports analytics and insights vertical - DO NOT IMPLEMENT WITHOUT EXPLICIT REQUEST"
     },
     "recruiting": {
       "status": "partially_implemented",
@@ -478,38 +648,50 @@
         "RecruiterDashboard component",
         "clinician_profiles table",
         "assignments table",
-        "ReplyAssistantInterface for email generation"
+        "clinician_communication_profiles table",
+        "reply_threads table",
+        "reply_messages table",
+        "clinician_interactions table",
+        "ReplyAssistantInterface for message generation",
+        "reply-generator edge function"
       ]
     }
   },
   "security": {
-    "rls_enabled": "All tables have Row Level Security enabled",
-    "policies": "Users can only access their own data",
-    "service_role_bypass": "Edge functions use service role to bypass RLS",
-    "auth_provider": "Supabase Auth with email/password"
+    "rls_enabled": "All tables have Row Level Security enabled - NEVER disable",
+    "policies": "Users can only access their own data (user_id FK check)",
+    "service_role_bypass": "Edge functions use service role to bypass RLS for system operations",
+    "auth_provider": "Supabase Auth with email/password",
+    "image_storage": "Supabase Storage with signed URLs, RLS-protected buckets"
   },
   "performance": {
     "bundle_size": {
-      "js": "1037 KB (345 KB gzipped)",
-      "css": "51 KB (10 KB gzipped)"
+      "main_js": "334 KB (104 KB gzipped)",
+      "chat_interface": "159 KB (48 KB gzipped)",
+      "total_css": "87 KB (14 KB gzipped)"
     },
+    "optimizations_implemented": [
+      "Code splitting for lazy-loaded components (StorageManager, Modals)",
+      "React.memo for MessageBubble and expensive components",
+      "Streaming SSE responses for real-time updates",
+      "Image compression before upload (browser-image-compression)",
+      "SHA-256 keyed ai_cache for pass output caching"
+    ],
     "optimizations_needed": [
-      "Code splitting for large components",
-      "Virtual scrolling for message lists",
-      "Lazy loading for syntax highlighter",
-      "Message caching",
-      "Request deduplication"
+      "Virtual scrolling for very long message lists (>100 messages)",
+      "Request deduplication for concurrent identical queries",
+      "More aggressive code splitting for syntax-highlighter"
     ],
     "caching_strategy": {
       "ai_cache_table": "SHA-256 keyed pass output cache",
-      "ttl": "Configurable per lane",
-      "invalidation": "Daily cron job purges expired entries"
+      "ttl": "Configurable per lane (default 24 hours)",
+      "invalidation": "Daily cron job purges expired entries at 3 AM UTC"
     }
   },
   "file_index": {
-    "frontend_files": 68,
-    "backend_functions": 7,
-    "migration_files": 66,
-    "total_loc_estimate": "~15000+ lines"
+    "frontend_files": 121,
+    "backend_functions": 8,
+    "migration_files": 67,
+    "total_loc_estimate": "~16000+ lines"
   }
 }
