@@ -1,0 +1,515 @@
+{
+  "version": "1.0",
+  "generated_at": "2025-11-22",
+  "system": {
+    "name": "Continuum",
+    "description": "Multi-lane AI workspace with DeepThink reasoning engine, multi-modal chat, and vertical-specific features",
+    "type": "lanes_based_reasoning_system",
+    "primary_domains": ["general_ai_chat", "deepthink_reasoning", "clinical_recruiting", "code_assistance"]
+  },
+  "stack": {
+    "frontend": {
+      "framework": "React 18.3.1 + Vite 5.4.21",
+      "language": "TypeScript 5.5.3",
+      "styling": "Tailwind CSS 3.4.1",
+      "state_management": "React hooks + Context API",
+      "ui_libraries": [
+        "lucide-react (icons)",
+        "framer-motion (animations)",
+        "react-hot-toast (notifications)",
+        "react-markdown (rendering)",
+        "react-syntax-highlighter (code display)",
+        "mermaid (diagrams)"
+      ]
+    },
+    "backend": {
+      "runtime": "Deno (Supabase Edge Functions)",
+      "database": "PostgreSQL (Supabase)",
+      "storage": "Supabase Storage",
+      "auth": "Supabase Auth"
+    }
+  },
+  "architecture": {
+    "paradigm": "lanes",
+    "description": "Multi-pass reasoning pipeline where each space_run orchestrates multiple ai_runs (passes) through planner → evidence → parallel solvers → hybrid verifier flow",
+    "execution_model": {
+      "lane": "Configuration defining a reasoning pipeline",
+      "space_run": "Complete job execution (user query → final answer)",
+      "ai_run": "Individual pass within space_run (planner, solver, verifier, etc.)",
+      "pass_types": [
+        "planner - Decomposes query into sub-tasks",
+        "retriever - Gathers evidence via RAG",
+        "reranker - Scores and filters evidence",
+        "solver - Generates candidate solutions (parallel)",
+        "verifier_hybrid - Deterministic + LLM verification",
+        "verifier_llm - Pure LLM verification"
+      ]
+    },
+    "key_flows": {
+      "deepthink_execution": "user_query → space_run created → planner pass → evidence passes → N parallel solver passes → verifier selects winner → final_output",
+      "simple_chat": "user_query → ai-chat-router → direct model call → streaming response",
+      "lane_selection": "router analyzes query → selects lane (deepthink/simple) → routes to appropriate function"
+    }
+  },
+  "database": {
+    "provider": "Supabase PostgreSQL",
+    "migrations_path": "supabase/migrations/",
+    "schemas": {
+      "public": {
+        "core_lanes_tables": {
+          "ai_lanes": {
+            "purpose": "Lane configuration registry (pipeline definitions)",
+            "key_columns": ["id", "name", "config_json", "created_at"],
+            "notes": "Stores DeepThink lane configs with model choices, timeouts, token caps"
+          },
+          "space_runs": {
+            "purpose": "Complete reasoning job executions from start to finish",
+            "key_columns": [
+              "id",
+              "user_id",
+              "lane_id",
+              "goal_prompt",
+              "status",
+              "trace_id",
+              "verify_score",
+              "residual_risk",
+              "final_output",
+              "start_time",
+              "end_time",
+              "total_latency_ms",
+              "total_cost_usd",
+              "total_tokens"
+            ],
+            "relationships": {
+              "lane_id": "FK to ai_lanes",
+              "user_id": "FK to auth.users"
+            },
+            "status_enum": ["pending", "running", "success", "error", "cancelled"]
+          },
+          "ai_runs": {
+            "purpose": "Individual pass executions (planner, solver, verifier) within a space_run",
+            "key_columns": [
+              "id",
+              "space_run_id",
+              "pass_type",
+              "model_name",
+              "input_data",
+              "output_data",
+              "pass_candidate",
+              "is_winner",
+              "cache_hit",
+              "latency_ms",
+              "execution_params",
+              "input_tokens",
+              "output_tokens"
+            ],
+            "relationships": {
+              "space_run_id": "FK to space_runs"
+            },
+            "pass_type_enum": ["planner", "retriever", "reranker", "solver", "verifier_hybrid", "verifier_llm"]
+          },
+          "ai_artifacts": {
+            "purpose": "Evidence, snippets, and references gathered during execution",
+            "key_columns": [
+              "id",
+              "space_run_id",
+              "ref_id",
+              "source_type",
+              "source_uri",
+              "snippet_hash",
+              "snippet_text",
+              "snippet_location",
+              "rerank_score"
+            ],
+            "relationships": {
+              "space_run_id": "FK to space_runs"
+            },
+            "source_types": ["web", "db", "file", "error", "search_result"]
+          },
+          "ai_run_checks": {
+            "purpose": "Verification checks performed on solver outputs",
+            "key_columns": [
+              "id",
+              "verifier_run_id",
+              "candidate_run_id",
+              "check_name",
+              "check_type",
+              "status",
+              "reasoning"
+            ],
+            "relationships": {
+              "verifier_run_id": "FK to ai_runs (verifier pass)",
+              "candidate_run_id": "FK to ai_runs (solver being verified)"
+            },
+            "check_types": ["deterministic", "llm"]
+          },
+          "ai_cache": {
+            "purpose": "Cached pass outputs with TTL for performance optimization",
+            "key_columns": [
+              "cache_key",
+              "pass_type",
+              "output_data",
+              "usage_metadata",
+              "created_at",
+              "expires_at"
+            ],
+            "notes": "SHA-256 hash of input as cache_key, daily cron job purges expired entries"
+          },
+          "ai_cost_ledger": {
+            "purpose": "Detailed cost tracking and billing records (partitioned by month)",
+            "key_columns": [
+              "id",
+              "ai_run_id",
+              "user_id",
+              "provider",
+              "model",
+              "input_tokens",
+              "output_tokens",
+              "cost_usd",
+              "created_at"
+            ],
+            "relationships": {
+              "ai_run_id": "FK to ai_runs",
+              "user_id": "FK to auth.users"
+            },
+            "partitioning": "Range partitioned by created_at (monthly), auto-created via pg_cron"
+          }
+        },
+        "chat_tables": {
+          "ai_conversations": {
+            "purpose": "Chat sessions/threads",
+            "key_columns": ["id", "user_id", "title", "created_at", "updated_at", "project_id", "preferred_provider", "mode"],
+            "modes": ["chat", "deepthink", "tutorial", "recruiter", "reply_assistant"]
+          },
+          "ai_messages": {
+            "purpose": "Individual messages in conversations",
+            "key_columns": ["id", "conversation_id", "role", "content", "model", "created_at", "metadata"],
+            "roles": ["user", "assistant", "system"]
+          }
+        },
+        "projects_spaces": {
+          "projects": {
+            "purpose": "Workspaces/clinician spaces",
+            "key_columns": ["id", "user_id", "name", "description", "clinician_id", "system_prompt", "created_at", "updated_at"]
+          },
+          "memory_spaces": {
+            "purpose": "Memory storage spaces for context",
+            "key_columns": ["id", "user_id", "name", "created_at"]
+          },
+          "memories": {
+            "purpose": "Individual memory entries with embeddings",
+            "key_columns": ["id", "space_id", "content", "embedding", "metadata", "created_at"]
+          }
+        },
+        "clinical_recruiting": {
+          "clinician_profiles": {
+            "purpose": "Healthcare clinician profiles",
+            "key_columns": ["id", "user_id", "full_name", "email", "phone", "created_at"]
+          },
+          "assignments": {
+            "purpose": "Clinician assignments to facilities",
+            "key_columns": ["id", "clinician_id", "user_id", "facility_name", "start_date", "end_date", "status", "created_at"]
+          }
+        },
+        "storage_tables": {
+          "uploaded_images": {
+            "purpose": "Image attachments with Supabase Storage integration",
+            "key_columns": ["id", "user_id", "session_id", "conversation_id", "storage_path", "signed_url", "original_filename", "mime_type", "file_size"]
+          },
+          "stored_schemas": {
+            "purpose": "Saved data structures/schemas",
+            "key_columns": ["id", "user_id", "name", "schema_data", "project_id", "created_at"]
+          },
+          "design_specs": {
+            "purpose": "Design specifications",
+            "key_columns": ["id", "user_id", "name", "spec_data", "created_at"]
+          },
+          "code_snippets": {
+            "purpose": "Code snippet library",
+            "key_columns": ["id", "user_id", "title", "description", "language", "code", "tags", "created_at"]
+          }
+        }
+      }
+    },
+    "relationships_map": {
+      "lanes_execution": "ai_lanes → space_runs → ai_runs → ai_artifacts + ai_run_checks",
+      "chat_hierarchy": "projects → ai_conversations → ai_messages",
+      "memory_hierarchy": "memory_spaces → memories",
+      "cost_tracking": "ai_runs → ai_cost_ledger"
+    }
+  },
+  "edge_functions": {
+    "deepthink": {
+      "location": "supabase/functions/deepthink/",
+      "entry_point": "index.ts",
+      "size_kb": 16,
+      "purpose": "Multi-pass reasoning orchestrator (planner → evidence → solvers → verifier)",
+      "modules": {
+        "index.ts": "Main orchestrator - coordinates pass execution",
+        "evidence.ts": "RAG/retrieval - gathers evidence for queries",
+        "verifier.ts": "Hybrid verification - validates solver outputs",
+        "provider.ts": "Model abstraction - normalizes provider APIs",
+        "cost.ts": "Cost calculation - tracks token usage and USD costs",
+        "cache.ts": "Caching layer - SHA-256 keyed response cache",
+        "metrics.ts": "Observability - logs and metrics collection",
+        "validate.ts": "Schema validation - validates pass outputs",
+        "util.ts": "Helper functions"
+      },
+      "schemas": {
+        "location": "supabase/functions/deepthink/schemas/",
+        "files": [
+          "DeepThinkPlan.schema.json - Planner output schema",
+          "DeepThinkDraft.schema.json - Solver output schema",
+          "DeepThinkFinal.schema.json - Final output schema"
+        ]
+      }
+    },
+    "ai_chat_router": {
+      "location": "supabase/functions/ai-chat-router/",
+      "entry_point": "index.ts",
+      "purpose": "Routes chat messages to appropriate lane or simple provider",
+      "modules": {
+        "index.ts": "Main router logic",
+        "searchRouter.ts": "Search-specific routing (Perplexity integration)"
+      }
+    },
+    "support_functions": {
+      "memory_lanes": {
+        "location": "supabase/functions/memory-lanes/",
+        "purpose": "Memory system operations"
+      },
+      "perplexity_search": {
+        "location": "supabase/functions/perplexity-search/",
+        "purpose": "Web search integration via Perplexity API"
+      },
+      "exercise_generator": {
+        "location": "supabase/functions/exercise-generator/",
+        "purpose": "Generates learning exercises"
+      },
+      "tutorial_generator": {
+        "location": "supabase/functions/tutorial-generator/",
+        "purpose": "Creates tutorial content"
+      },
+      "reply_generator": {
+        "location": "supabase/functions/reply-generator/",
+        "purpose": "Generates reply suggestions"
+      }
+    },
+    "shared": {
+      "_shared/cors.ts": "CORS headers for all functions"
+    }
+  },
+  "frontend": {
+    "location": "src/",
+    "entry_point": "main.tsx → App.tsx",
+    "structure": {
+      "components": {
+        "total_count": 68,
+        "key_interfaces": {
+          "ChatInterface.tsx": "Main chat UI (430 lines)",
+          "DeepThinkInterface.tsx": "Deep reasoning mode UI",
+          "TutorialInterface.tsx": "Tutorial generation interface",
+          "RecruiterDashboard.tsx": "Recruiter-specific dashboard",
+          "ReplyAssistantInterface.tsx": "Reply generation interface"
+        },
+        "chat_components": [
+          "MessageList.tsx - Message container",
+          "MessageBubble.tsx - Individual message display (487 lines)",
+          "ChatInputArea.tsx - Message composition",
+          "TypingIndicator.tsx - Streaming indicator"
+        ],
+        "artifacts": [
+          "HTMLArtifact.tsx - HTML preview",
+          "MermaidArtifact.tsx - Diagram rendering",
+          "OpenAPIArtifact.tsx - API spec viewer"
+        ],
+        "images": [
+          "ImageGrid.tsx - Image gallery",
+          "ImageLightbox.tsx - Image viewer",
+          "ProgressiveImage.tsx - Progressive loading"
+        ]
+      },
+      "hooks": {
+        "useAiRouterChat.ts": "Main chat orchestration hook",
+        "useDeepThink.ts": "DeepThink lane execution hook",
+        "useChatSession.ts": "Session management",
+        "useSupabaseData.ts": "Data fetching from Supabase",
+        "useReplyAssistant.ts": "Reply generation",
+        "useEmailComposer.ts": "Email composition",
+        "useLearningSystem.ts": "Learning/tutorial features"
+      },
+      "contexts": {
+        "ArtifactsContext.tsx": "Artifacts state management",
+        "InputInjectionContext.tsx": "Input injection for templates",
+        "ModeContext.tsx": "Interface mode management"
+      },
+      "lib": {
+        "aiRouter.ts": "Client-side model routing logic",
+        "supabaseClient.ts": "Supabase client configuration",
+        "imageStorageService.ts": "Image upload/storage",
+        "documentUpload.ts": "Document handling",
+        "documentRetrieval.ts": "Document retrieval",
+        "contextResolver.ts": "Context resolution for prompts"
+      },
+      "services": {
+        "contextService.ts": "Context management",
+        "historyService.ts": "Chat history management",
+        "memoryService.ts": "Memory system integration",
+        "searchService.ts": "Search functionality"
+      }
+    },
+    "routes": {
+      "concept": "Single-page app with mode-based interfaces",
+      "modes": [
+        "chat - Standard chat interface",
+        "deepthink - Deep reasoning with lane visibility",
+        "tutorial - Tutorial generation and learning",
+        "recruiter - Recruiter dashboard view",
+        "reply_assistant - Reply generation view"
+      ]
+    }
+  },
+  "ai_providers": {
+    "anthropic": {
+      "models": ["claude-3-5-sonnet-20240620"],
+      "use_cases": ["Complex reasoning", "Code review", "Technical writing"],
+      "vision_capable": true
+    },
+    "google": {
+      "models": ["gemini-1.5-flash-latest", "gemini-2.5-pro", "gemini-2.5-flash"],
+      "use_cases": ["Fast responses", "Multimodal tasks", "DeepThink passes"],
+      "vision_capable": true
+    },
+    "openai": {
+      "models": ["gpt-4o", "gpt-5"],
+      "use_cases": ["Balanced performance", "Creative tasks", "General chat"],
+      "vision_capable": true
+    }
+  },
+  "routing_logic": {
+    "router_function": "supabase/functions/ai-chat-router/index.ts",
+    "strategy": "Analyze query → classify task type → select lane or simple provider → stream SSE response",
+    "lane_selection_criteria": {
+      "deepthink_triggers": [
+        "Complex reasoning required",
+        "Multi-step problem solving",
+        "Evidence gathering needed",
+        "High-stakes decisions"
+      ],
+      "simple_chat_triggers": [
+        "Straightforward questions",
+        "Creative writing",
+        "Quick responses",
+        "Conversational queries"
+      ]
+    },
+    "model_routing_rules": {
+      "self_awareness": "If query mentions specific model, route to that model",
+      "task_based": "Match query pattern to model strengths",
+      "user_preference": "Respect explicit model selection",
+      "auto_fallback": "Default to auto router if uncertain"
+    }
+  },
+  "observability": {
+    "metrics": {
+      "space_runs": "Total lane executions by status",
+      "ai_runs": "Pass executions by type and model",
+      "pass_failures": "Failure rate by pass type",
+      "verify_score": "Verification quality scores",
+      "latency_p95": "95th percentile latency by pass",
+      "cache_hit_rate": "Cache effectiveness",
+      "cost_by_user": "USD cost per user",
+      "tokens_by_model": "Token usage by provider/model"
+    },
+    "logging": {
+      "space_runs_table": "Complete job execution logs with final_output",
+      "ai_runs_table": "Per-pass logs with input/output/tokens/latency",
+      "ai_artifacts_table": "Evidence gathering logs",
+      "ai_run_checks_table": "Verification check results"
+    },
+    "automation": {
+      "cache_purge": "Daily pg_cron job at 3 AM UTC",
+      "partition_creation": "Monthly pg_cron job on 25th at 1 AM UTC"
+    }
+  },
+  "planned_verticals": {
+    "builder": {
+      "status": "planned",
+      "description": "Code generation and IDE automation lanes",
+      "planned_lanes": [
+        {
+          "name": "builder_translation",
+          "purpose": "Normalize messy user intent into structured builder request"
+        },
+        {
+          "name": "builder_spec",
+          "purpose": "Turn normalized intent into feature specification"
+        },
+        {
+          "name": "builder_sql",
+          "purpose": "Generate schema and migrations from spec"
+        },
+        {
+          "name": "builder_ui",
+          "purpose": "Design screens, structure, and component map"
+        },
+        {
+          "name": "builder_ui_polish",
+          "purpose": "Microcopy, interactions, and styling"
+        },
+        {
+          "name": "builder_patch",
+          "purpose": "Generate concrete code patches per file"
+        },
+        {
+          "name": "builder_debug",
+          "purpose": "Diagnose failures and generate fix patches"
+        }
+      ]
+    },
+    "sports": {
+      "status": "planned",
+      "description": "Sports analytics and insights vertical"
+    },
+    "recruiting": {
+      "status": "partially_implemented",
+      "description": "Healthcare recruiting workflow automation",
+      "implemented": [
+        "RecruiterDashboard component",
+        "clinician_profiles table",
+        "assignments table",
+        "ReplyAssistantInterface for email generation"
+      ]
+    }
+  },
+  "security": {
+    "rls_enabled": "All tables have Row Level Security enabled",
+    "policies": "Users can only access their own data",
+    "service_role_bypass": "Edge functions use service role to bypass RLS",
+    "auth_provider": "Supabase Auth with email/password"
+  },
+  "performance": {
+    "bundle_size": {
+      "js": "1037 KB (345 KB gzipped)",
+      "css": "51 KB (10 KB gzipped)"
+    },
+    "optimizations_needed": [
+      "Code splitting for large components",
+      "Virtual scrolling for message lists",
+      "Lazy loading for syntax highlighter",
+      "Message caching",
+      "Request deduplication"
+    ],
+    "caching_strategy": {
+      "ai_cache_table": "SHA-256 keyed pass output cache",
+      "ttl": "Configurable per lane",
+      "invalidation": "Daily cron job purges expired entries"
+    }
+  },
+  "file_index": {
+    "frontend_files": 68,
+    "backend_functions": 7,
+    "migration_files": 66,
+    "total_loc_estimate": "~15000+ lines"
+  }
+}
