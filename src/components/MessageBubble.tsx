@@ -633,19 +633,17 @@ export const MessageBlock: React.FC<MessageBlockProps> = memo(({
                     <div className="prose prose-invert max-w-none
                         prose-text-base
                         prose-p:my-5 prose-p:leading-7 prose-p:text-zinc-300
-                        prose-headings:mt-8 prose-headings:mb-4 prose-headings:font-semibold prose-headings:text-zinc-100
+                        prose-headings:mt-7 prose-headings:mb-3 prose-headings:font-semibold prose-headings:text-zinc-100
                         prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-h4:text-lg
                         prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-a:font-medium prose-a:no-underline hover:prose-a:underline transition-colors
-                        prose-strong:text-zinc-100 prose-strong:font-semibold
-                        // Inline code overrides handled by markdownComponents definition.
-                        prose-code:text-sm prose-code:before:content-none prose-code:after:content-none
-                        // Ensures code blocks (pre) integrate seamlessly (styling handled by CodeBlock component).
+                        prose-strong:text-zinc-200 prose-strong:font-semibold
+                        prose-code:text-zinc-200 prose-code:bg-white/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none prose-code:font-medium
                         prose-pre:bg-transparent prose-pre:p-0 prose-pre:my-6
-                        prose-ul:my-5 prose-ul:pl-6
-                        prose-ol:my-5 prose-ol:pl-6
+                        prose-ul:my-5 prose-ul:pl-7
+                        prose-ol:my-5 prose-ol:pl-7
                         prose-li:my-2 prose-li:leading-6 prose-li:text-zinc-300
-                        prose-hr:border-zinc-700 prose-hr:my-10
-                        prose-blockquote:border-l-4 prose-blockquote:border-l-zinc-600 prose-blockquote:py-2 prose-blockquote:pl-4 prose-blockquote:my-5 prose-blockquote:not-italic prose-blockquote:text-zinc-400
+                        prose-hr:border-white/10 prose-hr:my-8
+                        prose-blockquote:border-l-zinc-600 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-zinc-400
                     ">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
