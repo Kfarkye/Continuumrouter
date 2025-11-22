@@ -168,7 +168,7 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
         const updatedMessagesChunk = state.messages.map(msg =>
             msg.id === action.payload.messageId
             // Ensure status is 'streaming' while chunks arrive
-            ? { ...msg, content: msg.content + action.payload.content, status: 'streaming' }
+            ? { ...msg, content: msg.content + action.payload.content, status: 'streaming' as const }
             : msg
         );
         return { ...state, messages: updatedMessagesChunk };
@@ -186,7 +186,7 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
         // Mark the stream as finished and update status to complete
         const updatedMessagesEnd = state.messages.map(msg =>
             msg.id === action.payload.messageId
-            ? { ...msg, status: 'complete', metadata: { ...(msg.metadata || {}), isStreaming: false } }
+            ? { ...msg, status: 'complete' as const, metadata: { ...(msg.metadata || {}), isStreaming: false } }
             : msg
         );
         return { ...state, messages: updatedMessagesEnd, isSending: false, currentProgress: 100, currentStep: 'Complete' };
@@ -201,7 +201,7 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
                     ...msg,
                     // If partial content exists, append the error; otherwise, just show the error.
                     content: msg.content ? `${msg.content}\n\n[Error: ${action.payload.error.message}]` : `Error: ${action.payload.error.message}`,
-                    status: 'error',
+                    status: 'error' as const,
                     metadata: { ...(msg.metadata || {}), isError: true, isStreaming: false }
                   }
                 : msg
@@ -214,7 +214,7 @@ const chatReducer = (state: ChatState, action: Action): ChatState => {
       case 'APPEND_MESSAGE':
           // Used for system messages or action results injected externally
           // Ensure appended messages have a status
-          const messageWithStatus = { ...action.payload, status: action.payload.status || 'complete' };
+          const messageWithStatus = { ...action.payload, status: action.payload.status || 'complete' as const };
           return { ...state, messages: [...state.messages, messageWithStatus] };
       case 'CLEAR_MESSAGES':
         return { ...initialState, isLoadingHistory: false, retryCount: 0, isRetrying: false };
@@ -231,7 +231,6 @@ export const useAiRouterChat = ({
   sessionId,
   accessToken,
   userId,
-  // files // Kept in interface but unused in this hook implementation
   onActionRequest,
   selectedModel,
   spaceId,
@@ -619,9 +618,8 @@ export const useAiRouterChat = ({
                                 id: crypto.randomUUID(),
                                 role: 'system',
                                 content: content as string,
-                                // Status is handled by the reducer for APPEND_MESSAGE
                                 created_at: new Date().toISOString(),
-                              }
+                              } as ChatMessage
                             });
                           });
                         }
@@ -640,8 +638,6 @@ export const useAiRouterChat = ({
                           });
                         }
                         break;
-
-                      // ... (Other cases: status, keepalive, heartbeat, warning, error, done remain the same)
 
                       default:
                         break;
@@ -726,14 +722,12 @@ export const useAiRouterChat = ({
 
       // Dispatch error with better messaging (this triggers the status update in the reducer)
       let userFriendlyError = error;
-      // ... (Error message refinement logic remains the same)
 
       dispatch({ type: 'ERROR', payload: { error: userFriendlyError, messageId: assistantMessageId } });
 
     } finally {
       abortControllerRef.current = null;
     }
-  // Dependency array updated to rely on the whole state object for snapshots and latest state access
   }, [sessionId, accessToken, userId, onActionRequest, selectedModel, spaceId, appendMessage, state]);
 
   // Wrapper for external calls (without retry flag)
@@ -762,7 +756,7 @@ export const useAiRouterChat = ({
     sendMessage,
     clearMessages,
     stop,
-    cancelStream: stop, // Alias for backward compatibility
+    cancelStream: stop,
     appendMessage,
   };
 };
