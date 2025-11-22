@@ -1,6 +1,5 @@
 import React, { useState, useCallback, forwardRef } from 'react';
 import { Command, Loader2, ArrowLeft } from 'lucide-react';
-// Assuming these imports are correctly configured in the project
 import { supabase } from '../lib/supabaseClient';
 import { TypeWriter } from './TypeWriter';
 
@@ -10,31 +9,31 @@ import { TypeWriter } from './TypeWriter';
 
 const BRAND_NAME = 'Continuum';
 
-// Marketing Copy (Retaining the raw, high-impact messaging)
+// Updated Marketing Copy - Focused on Context Loss for Developers
 const revolutionaryExamples = [
   {
-    line1: 'Every Uber driver',
-    line2: 'knows what drivers actually need',
+    line1: 'Your AI forgets your codebase',
+    line2: 'every conversation',
     color: 'text-blue-400',
   },
   {
-    line1: 'I see the problem every day',
-    line2: "but I can't build it",
+    line1: "You've explained the same architecture",
+    line2: '47 times',
     color: 'text-purple-400',
   },
   {
-    line1: 'Tired of trash software',
-    line2: "that doesn't get my business",
+    line1: 'Context windows aren't the problem',
+    line2: 'Management is',
     color: 'text-teal-400',
   },
   {
-    line1: 'I got the idea and hustle',
-    line2: 'just need to build it',
+    line1: 'Stop re-explaining',
+    line2: 'Start building',
     color: 'text-pink-400',
   },
   {
-    line1: 'Stop waiting for a developer',
-    line2: 'build your own shit',
+    line1: 'Your entire codebase',
+    line2: 'One memory',
     color: 'text-orange-400',
   },
 ];
@@ -44,7 +43,6 @@ const revolutionaryExamples = [
 // ============================================================================
 
 const Logo: React.FC<{ size?: 'sm' | 'lg' }> = ({ size = 'sm' }) => (
-  // Using backdrop-blur and bg-opacity for a refined "glass" effect
   <div className={`rounded-xl bg-white/5 backdrop-blur-md flex items-center justify-center shadow-lg ${size === 'sm' ? 'w-10 h-10' : 'w-16 h-16'}`}>
     <Command className={`text-white/90 ${size === 'sm' ? 'w-5 h-5' : 'w-8 h-8'}`} strokeWidth={1.5} />
   </div>
@@ -61,7 +59,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     
     const variantStyles = variant === 'primary'
       ? 'bg-blue-600 hover:bg-blue-700 text-white focus-visible:ring-blue-500'
-      // Secondary style uses slight backdrop blur for a premium feel
       : 'bg-white/10 hover:bg-white/20 text-white focus-visible:ring-white/50 backdrop-blur-sm';
 
     return (
@@ -77,7 +74,6 @@ const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputEl
   (props, ref) => (
     <input
       ref={ref}
-      // Enhanced input styling for better contrast and focus state
       className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/70 transition-all duration-200 placeholder:text-white/40"
       {...props}
     />
@@ -104,7 +100,6 @@ const Alert: React.FC<{ type: 'error' | 'success', message: string }> = ({ type,
 
 const ShowcasePanel: React.FC = () => {
   const [currentExampleIndex, setCurrentExampleIndex] = useState(0);
-  // Use index as key to force re-mount of TypeWriter when example changes
   const key = currentExampleIndex;
 
   const handleComplete = useCallback(() => {
@@ -123,7 +118,6 @@ const ShowcasePanel: React.FC = () => {
 
       {/* Feature Showcase */}
       <main className="flex items-center justify-center flex-1">
-        {/* Increased font size for impact */}
         <div className="max-w-lg text-4xl font-medium tracking-tight">
           <TypeWriter
             key={key}
@@ -131,7 +125,6 @@ const ShowcasePanel: React.FC = () => {
               currentExample.line1,
               currentExample.line2,
             ]}
-            // Dynamic colors for the first line
             colors={[currentExample.color, 'text-white/80']}
             typingSpeed={45}
             deleteSpeed={30}
@@ -144,9 +137,9 @@ const ShowcasePanel: React.FC = () => {
         </div>
       </main>
 
-      {/* Footer inspired by Apple */}
+      {/* Footer */}
       <footer className="text-sm text-white/40">
-        Designed by {BRAND_NAME} in California.
+        Built by a developer tired of pasting the same files 50 times.
       </footer>
     </div>
   );
@@ -165,16 +158,17 @@ type AuthView = 'landing' | 'login' | 'signup';
 // Sub-component: Landing View
 const LandingView: React.FC<{ onViewChange: (view: AuthView) => void, onDemoMode?: () => void }> = ({ onViewChange, onDemoMode }) => (
   <div className="w-full max-w-md text-center animate-fadeIn px-4">
-    {/* Mobile Logo (Hidden on lg screens) */}
+    {/* Mobile Logo */}
     <div className="flex justify-center mb-8 lg:hidden">
         <Logo size="lg" />
     </div>
-    {/* Headline Restored to Aspirational Tone */}
+    
+    {/* Updated Headline - Developer Focused */}
     <h1 className="text-5xl font-extrabold mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
-        The future of building software.
+        Never lose context again.
     </h1>
     <p className="text-xl text-white/70 mb-10">
-        Welcome to {BRAND_NAME}. Let's create something incredible.
+        The AI coding assistant that actually remembers your codebase.
     </p>
 
     <div className="flex gap-4 mb-6">
@@ -215,29 +209,23 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
       if (isSignUp) {
         const { error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) throw signUpError;
-        // A more inspiring success message
-        setMessage({ type: 'success', content: 'Incredible. Check your email to confirm and begin.' });
-        // Clear form on success
+        setMessage({ type: 'success', content: 'Check your email to confirm and start building.' });
         setEmail('');
         setPassword('');
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
-        // Note: Actual redirection upon successful login is typically handled by a global auth state listener (e.g., onAuthStateChange).
       }
     } catch (err: any) {
       setMessage({ type: 'error', content: err.message || 'Authentication failed. Please try again.' });
     } finally {
-      // Ensure loading is always reset unless a successful login occurred (handled by redirect)
       setLoading(false);
     }
   };
 
-  // Navigation handlers
   const handleBackClick = useCallback(() => onViewChange('landing'), [onViewChange]);
   
   const handleSwitchView = useCallback(() => {
-      // Clear state when switching views
       setMessage(null);
       setEmail('');
       setPassword('');
@@ -246,7 +234,6 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
 
   return (
     <div className="w-full max-w-sm animate-fadeIn relative">
-        {/* Dedicated Back Button for better UX */}
         <button onClick={handleBackClick} className="absolute top-0 left-0 text-white/50 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded-full p-2 hover:bg-white/5" aria-label="Go back to landing page">
             <ArrowLeft className="w-6 h-6" />
         </button>
@@ -254,7 +241,7 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
       <div className="flex flex-col items-center justify-center mb-8 pt-8">
          <Logo size="lg" />
         <h1 className="text-3xl font-bold tracking-tight mt-6">
-          {isSignUp ? 'Create Your Vision' : 'Welcome Back'}
+          {isSignUp ? 'Start Building' : 'Welcome Back'}
         </h1>
       </div>
 
@@ -281,7 +268,6 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
             placeholder="Password"
             required
             minLength={6}
-            // Crucial for security and browser password manager compatibility
             autoComplete={isSignUp ? "new-password" : "current-password"}
             />
         </div>
@@ -293,7 +279,6 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
         </Button>
       </form>
 
-      {/* Switch between Login/Signup */}
       <div className="mt-8 pt-6 border-t border-white/[0.06] text-center">
         <p className="text-sm text-white/60">
           {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
@@ -309,12 +294,8 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
   );
 };
 
-/**
- * The right panel managing the authentication views.
- */
 const AuthPanel: React.FC<AuthPanelProps> = ({ onDemoMode }) => {
     const [view, setView] = useState<AuthView>('landing');
-    // Dynamically get the current year for the footer
     const currentYear = new Date().getFullYear();
 
     const handleViewChange = useCallback((newView: AuthView) => {
@@ -322,7 +303,6 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onDemoMode }) => {
     }, []);
 
     return (
-        // Ensure the panel is scrollable on smaller screens if needed
         <div className="flex-1 flex flex-col items-center justify-center p-8 bg-black relative overflow-y-auto">
         <main className="flex-1 flex items-center justify-center w-full">
             {view === 'landing' ? (
@@ -332,7 +312,6 @@ const AuthPanel: React.FC<AuthPanelProps> = ({ onDemoMode }) => {
             )}
         </main>
 
-        {/* Footer */}
         <footer className="pt-8 pb-4 text-center w-full">
             <div className="text-xs text-white/40 flex items-center justify-center gap-4">
             <a href="/terms" className="hover:text-white/70 transition-colors duration-200">
@@ -359,12 +338,8 @@ interface LandingPageProps {
   onDemoMode?: () => void;
 }
 
-/**
- * The main entry point for the Landing Page.
- */
 export const LandingPage: React.FC<LandingPageProps> = ({ onDemoMode }) => {
   return (
-    // Added 'antialiased' for smoother font rendering
     <div className="flex h-screen w-screen overflow-hidden bg-black text-white antialiased">
       <ShowcasePanel />
       <AuthPanel onDemoMode={onDemoMode} />
