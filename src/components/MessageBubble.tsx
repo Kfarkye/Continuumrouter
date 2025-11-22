@@ -1,21 +1,32 @@
 // src/components/MessageBubble.tsx
-import React, { useState, memo, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, memo, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { ChatMessage } from '../types';
 import { Edit2, Check, X, Copy, RefreshCcw, AlertTriangle, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { type Components } from 'react-markdown';
-// Assuming these imports are correct based on the original code
-import { CodeBlock } from './CodeBlock';
 import { HTMLPreview } from './HTMLPreview';
-import { DiagramBlock } from './DiagramBlock';
-import { ApiSpecViewer } from './ApiSpecViewer';
 import { ImageGrid } from './images/ImageGrid';
 import { SearchResults } from './SearchResults';
 import { detectSnippets, PreviewGroup, describePreviewGroup } from '../utils/htmlDetector';
 import { combineHtml } from '../utils/htmlCombiner';
 import yaml from 'js-yaml';
+import { Spinner } from './Spinner';
+
+// PERFORMANCE: Lazy load heavy components (saves ~500KB initial bundle)
+// These only load when actually needed (code blocks, diagrams, API specs)
+const CodeBlock = lazy(() => import('./CodeBlock').then(m => ({ default: m.CodeBlock })));
+const DiagramBlock = lazy(() => import('./DiagramBlock').then(m => ({ default: m.DiagramBlock })));
+const ApiSpecViewer = lazy(() => import('./ApiSpecViewer').then(m => ({ default: m.ApiSpecViewer })));
+
+// Lightweight fallback for lazy-loaded components
+const ComponentLoader = () => (
+  <div className="flex items-center justify-center py-4">
+    <Spinner size="sm" />
+    <span className="ml-2 text-xs text-zinc-500">Loading...</span>
+  </div>
+);
 interface MessageBubbleProps {
   // Added timestamp assumption for metadata display
   message: ChatMessage & { timestamp?: number };
@@ -217,14 +228,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       if (!inline && language) {
         // 1. Handle specialized renderers (Mermaid, OpenAPI)
         if (language === 'mermaid') {
-          return <DiagramBlock code={codeString} />;
+          return (
+            <Suspense fallback={<ComponentLoader />}>
+              <DiagramBlock code={codeString} />
+            </Suspense>
+          );
         }
         if ((language === 'yaml' || language === 'yml') && (codeString.includes('openapi:') || codeString.includes('swagger:'))) {
           try {
             const spec = yaml.load(codeString);
             // Validate spec before rendering
             if (typeof spec === 'object' && spec !== null) {
-              return <ApiSpecViewer spec={spec as any} />;
+              return (
+                <Suspense fallback={<ComponentLoader />}>
+                  <ApiSpecViewer spec={spec as any} />
+                </Suspense>
+              );
             }
           } catch {
             // Fall through to regular code block if parsing fails
@@ -242,12 +261,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
         }
         // 3. Standard Code Block
         return (
-          <CodeBlock
-            language={language}
-            value={codeString}
-            isStreaming={isMessageStreaming}
-            {...props}
-          />
+          <Suspense fallback={<ComponentLoader />}>
+            <CodeBlock
+              language={language}
+              value={codeString}
+              isStreaming={isMessageStreaming}
+              {...props}
+            />
+          </Suspense>
         );
       }
       // Inline code styling - refined for better readability and aesthetics

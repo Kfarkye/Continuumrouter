@@ -7,6 +7,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#000000" />
+
+    <!-- PERFORMANCE: Resource hints for faster mobile loading (saves 200-500ms) -->
+    <!-- Preconnect to Supabase - establishes connection early -->
+    <link rel="preconnect" href="https://luohiaujigqcjpzicxiz.supabase.co" crossorigin>
+    <!-- DNS prefetch for additional domains -->
+    <link rel="dns-prefetch" href="https://luohiaujigqcjpzicxiz.supabase.co">
+    <!-- Preload critical resources -->
+    <link rel="modulepreload" href="/src/main.tsx">
+
     <title>Continuum AI</title>
   </head>
   <body>

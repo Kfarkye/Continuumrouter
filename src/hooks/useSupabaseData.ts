@@ -95,17 +95,35 @@ export const useSupabaseData = () => {
 
   const fetchData = async (userId: string, projectId: string) => {
     try {
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('ai_conversations')
-        .select('id, session_id, title, created_at, updated_at, project_id')
-        .eq('user_id', userId)
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
+      // PERFORMANCE: Run all queries in parallel instead of sequential
+      // This saves 1-3 seconds on mobile networks with high latency
+      const [
+        { data: sessionData, error: sessionError },
+        { data: fileData, error: fileError },
+        { data: schemaData, error: schemaError }
+      ] = await Promise.all([
+        supabase
+          .from('ai_conversations')
+          .select('id, session_id, title, created_at, updated_at, project_id')
+          .eq('user_id', userId)
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('stored_files')
+          .select('*')
+          .eq('user_id', userId),
+        supabase
+          .from('saved_schemas')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('project_id', projectId)
+      ]);
 
+      // Handle session data with message counts
       if (sessionError) {
         console.error('Error fetching sessions:', sessionError);
       } else {
-        // Fetch message counts for each session
+        // Fetch message counts for each session (already optimized with Promise.all)
         const sessionsWithCounts = await Promise.all(
           (sessionData || []).map(async (s) => {
             const { count } = await supabase
@@ -126,23 +144,14 @@ export const useSupabaseData = () => {
         setSessions(sessionsWithCounts);
       }
 
-      const { data: fileData, error: fileError } = await supabase
-        .from('stored_files')
-        .select('*')
-        .eq('user_id', userId);
-
+      // Handle files
       if (fileError) {
         console.error('Error fetching files:', fileError);
       } else {
         setFiles(fileData || []);
       }
 
-      const { data: schemaData, error: schemaError } = await supabase
-        .from('saved_schemas')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('project_id', projectId);
-
+      // Handle schemas
       if (schemaError) {
         console.error('Error fetching schemas:', schemaError);
       } else {

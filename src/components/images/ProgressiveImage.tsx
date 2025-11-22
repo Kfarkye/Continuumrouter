@@ -137,6 +137,7 @@ export const ProgressiveImage: React.FC<ProgressiveImageProps> = ({
           onLoad={handleLoad}
           onError={handleError}
           loading="lazy"
+          decoding="async"
         />
       )}
 
