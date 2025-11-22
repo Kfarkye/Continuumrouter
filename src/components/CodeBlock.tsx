@@ -1,6 +1,7 @@
 // FILE: src/components/CodeBlock.tsx
-// DESC: A production-ready, accessible code block component with virtualization support,
-//       syntax highlighting, and comprehensive features for displaying code in React applications.
+// DESC: A production-grade, high-performance, and accessible code block component for React.
+//       Engineered for Linear/Vercel quality standards with virtualization, advanced streaming support,
+//       and a minimalist aesthetic inspired by Jony Ive.
 
 import React, {
   useEffect,
@@ -11,14 +12,19 @@ import React, {
   forwardRef,
   Component,
   memo,
+  CSSProperties,
 } from 'react';
-import { List as FixedSizeList, ListChildComponentProps as RWListChildComponentProps } from 'react-window';
+
+// Virtualization Libraries (Dependencies: react-window, react-virtualized-auto-sizer)
+import { FixedSizeList, ListChildComponentProps as RWListChildComponentProps } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+
+// Syntax Highlighting (Dependency: react-syntax-highlighter)
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vscDarkPlus as defaultThemeStyle } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { PrismStyle } from 'react-syntax-highlighter/dist/esm/types';
 
-// Language imports
+// Language definitions (Statically imported, assuming tree-shaking)
 import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
 import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
 import jsx from 'react-syntax-highlighter/dist/esm/languages/prism/jsx';
@@ -31,8 +37,9 @@ import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
 import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml';
 import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql';
 import markdown from 'react-syntax-highlighter/dist/esm/languages/prism/markdown';
+import diff from 'react-syntax-highlighter/dist/esm/languages/prism/diff';
 
-// Icons
+// Icons (Dependency: lucide-react)
 import {
   Check,
   Copy,
@@ -40,73 +47,97 @@ import {
   Maximize2,
   Minimize2,
   WrapText,
-  FileCode,
+  Code as FileCodeIcon,
   AlertTriangle,
+  Loader2,
+  Terminal,
 } from 'lucide-react';
 
-// Utilities
-import { cn, getFileExtension } from '../lib/utils';
+/* ============================================================================
+    UTILITIES (Integrated for single-file deliverable)
+   ============================================================================ */
+
+// Minimal implementation of cn utility (clsx/tailwind-merge)
+type ClassValue = string | number | boolean | null | undefined | ClassValue[];
+const cn = (...inputs: ClassValue[]): string => {
+  return inputs.flat(Infinity).filter(Boolean).join(' ');
+};
+
+// Utility to map language identifiers to file extensions
+const getFileExtension = (language: string): string => {
+  const map: Record<string, string> = {
+    javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', jsx: 'jsx', tsx: 'tsx',
+    python: 'py', py: 'py', css: 'css', html: 'html', markup: 'html',
+    bash: 'sh', shell: 'sh', json: 'json', yaml: 'yaml', yml: 'yml', sql: 'sql',
+    markdown: 'md', md: 'md', diff: 'diff', text: 'txt',
+  };
+  return map[language?.toLowerCase()] || 'txt';
+};
 
 /* ============================================================================
-   LANGUAGE REGISTRATION
+    LANGUAGE REGISTRATION
    ============================================================================ */
 
 const REGISTERED_LANGUAGES = new Set<string>();
 
-/**
- * Registers a language and its aliases with the syntax highlighter.
- * @param aliases - Array of language identifiers (e.g., ['javascript', 'js'])
- * @param language - The Prism language definition
- */
 const register = (aliases: string[], language: any) => {
   aliases.forEach(alias => {
-    try {
-      SyntaxHighlighter.registerLanguage(alias, language);
-      REGISTERED_LANGUAGES.add(alias);
-    } catch (error) {
-      console.warn(`Failed to register language alias: ${alias}`, error);
+    if (!REGISTERED_LANGUAGES.has(alias)) {
+      try {
+        SyntaxHighlighter.registerLanguage(alias, language);
+        REGISTERED_LANGUAGES.add(alias);
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn(`[CodeBlock] Failed to register language alias: ${alias}`, error);
+        }
+      }
     }
   });
 };
 
-// Register all supported languages
+// Register common languages
 register(['javascript', 'js'], javascript);
 register(['typescript', 'ts'], typescript);
 register(['jsx'], jsx);
 register(['tsx'], tsx);
 register(['python', 'py'], python);
 register(['css'], css);
-register(['html', 'xml', 'markup'], markup);
-register(['bash', 'shell'], bash);
+register(['html', 'xml', 'svg', 'markup'], markup);
+register(['bash', 'shell', 'sh'], bash);
 register(['json'], json);
 register(['yaml', 'yml'], yaml);
 register(['sql'], sql);
 register(['markdown', 'md'], markdown);
+register(['diff'], diff);
 REGISTERED_LANGUAGES.add('text');
 
 /* ============================================================================
-   CONFIGURATION
+    CONFIGURATION
    ============================================================================ */
 
 const CONFIG = {
-  COPY_CONFIRMATION_DURATION: 2000,
-  DEFAULT_COLLAPSED_HEIGHT: 384,
-  LINE_HEIGHT: 22.4, // 14px font-size * 1.6 line-height
-  SMART_INLINE_MAX_LENGTH: 80,
-  MINIMALIST_VIEW_MAX_LINES: 5,
-  VIRTUALIZATION_THRESHOLD: 150,
-  VIRTUALIZATION_PROCESSING_TIMEOUT: 2500,
-  VERTICAL_PADDING: 32, // 1rem top + 1rem bottom
+  COPY_CONFIRMATION_DURATION: 2000, // ms
+  DEFAULT_COLLAPSED_HEIGHT: 320, // px
+  // CRITICAL: Must match CSS (14px font-size * 1.6 line-height). FixedSizeList requires precision.
+  LINE_HEIGHT: 22.4,
+  SMART_INLINE_MAX_LENGTH: 100,
+  MINIMALIST_VIEW_MAX_LINES: 4,
+  VIRTUALIZATION_THRESHOLD: 100, // Enable virtualization earlier
+  VIRTUALIZATION_PROCESSING_TIMEOUT: 3000, // ms
+  VERTICAL_PADDING: 32, // 16px top + 16px bottom
+  MAX_VIEWPORT_HEIGHT_RATIO: 0.75,
+  HIGHLIGHT_COLOR: 'rgba(59, 130, 246, 0.1)', // Subtle blue highlight
+  HIGHLIGHT_BORDER_COLOR: '#3b82f6', // Blue border
 };
 
 const ICON_SIZE = {
-  STANDARD: 16,
-  MINIMAL: 18,
-  HEADER: 14,
+  TOOLBAR: 16,
+  MINIMAL: 16,
+  HEADER: 16,
 };
 
 /* ============================================================================
-   TYPE DEFINITIONS
+    TYPE DEFINITIONS
    ============================================================================ */
 
 export interface CodeBlockProps {
@@ -133,15 +164,16 @@ interface ActionProps {
   tooltip: string;
   active?: boolean;
   disabled?: boolean;
-  onClick?: () => void;
+  onClick?: (event?: React.MouseEvent) => void;
   href?: string;
   download?: string;
   className?: string;
-  minimal?: boolean;
+  variant?: 'standard' | 'minimal';
 }
 
 interface CodeHeaderProps {
   label: string;
+  Icon: React.ElementType;
   isWrapped: boolean;
   toggleWrap: () => void;
   isCollapsible: boolean;
@@ -151,6 +183,7 @@ interface CodeHeaderProps {
   downloadName: string;
   copied: boolean;
   doCopy: () => void;
+  isStreaming?: boolean;
 }
 
 interface HoverToolbarProps {
@@ -167,20 +200,28 @@ interface NonVirtualizedRendererProps {
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   detectedLanguage: string;
   theme: PrismStyle;
-  highlighterBaseStyle: React.CSSProperties;
+  highlighterBaseStyle: CSSProperties;
   showLineNumbers: boolean;
-  lineNumberStyle: React.CSSProperties;
+  lineNumberStyle: CSSProperties;
   isWrapped: boolean;
-  linePropsRenderer: (lineNumber: number) => { style: React.CSSProperties };
+  linePropsRenderer: (lineNumber: number) => { style: CSSProperties };
   code: string;
   tabIndex?: number;
 }
 
+// Types for react-window virtualization
 type ItemData = React.ReactElement[];
 type ListChildComponentProps = RWListChildComponentProps<ItemData>;
 
+// Type for the react-syntax-highlighter renderer prop
+interface RendererProps {
+  rows: React.ReactNode[];
+  stylesheet: PrismStyle;
+  useInlineStyles: boolean;
+}
+
 /* ============================================================================
-   UTILITY FUNCTIONS
+    UTILITY FUNCTIONS (Internal Helpers)
    ============================================================================ */
 
 /**
@@ -198,82 +239,84 @@ const extractText = (children: React.ReactNode): string => {
 };
 
 /**
- * Parses highlight specification into an array of line numbers.
- * Supports formats: "1,3,5" or "1-5,10" or [1, 3, 5]
+ * Parses highlight specification string into a Set for O(1) lookups.
  */
-function parseHighlightSpec(spec?: string | number[]): number[] {
-  if (!spec) return [];
-  if (Array.isArray(spec)) return spec.filter((n) => n > 0);
+function parseHighlightSpec(spec?: string | number[]): Set<number> {
+  const highlights = new Set<number>();
+  if (!spec) return highlights;
 
-  const highlights: number[] = [];
+  if (Array.isArray(spec)) {
+    spec.forEach(n => {
+      if (typeof n === 'number' && n > 0) highlights.add(n);
+    });
+    return highlights;
+  }
+
   const tokens = String(spec)
     .split(',')
-    .map((s) => s.trim())
+    .map(s => s.trim())
     .filter(Boolean);
 
   for (const token of tokens) {
     if (token.includes('-')) {
-      const [start, end] = token.split('-').map((s) => parseInt(s.trim(), 10));
-      if (Number.isFinite(start) && Number.isFinite(end)) {
-        for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
-          if (i > 0) highlights.push(i);
+      const [startStr, endStr] = token.split('-');
+      const start = parseInt(startStr.trim(), 10);
+      const end = parseInt(endStr.trim(), 10);
+
+      if (Number.isFinite(start) && Number.isFinite(end) && start > 0) {
+        const min = Math.min(start, end);
+        const max = Math.max(start, end);
+        for (let i = min; i <= max; i++) {
+          highlights.add(i);
         }
       }
     } else {
       const n = parseInt(token, 10);
-      if (Number.isFinite(n) && n > 0) highlights.push(n);
+      if (Number.isFinite(n) && n > 0) highlights.add(n);
     }
   }
   return highlights;
 }
 
 /**
- * Generates a download filename based on the provided filename or language.
- */
-function getDownloadName(filename: string | undefined, language: string): string {
-  if (filename?.trim()) return filename.trim();
-  const ext = getFileExtension(language);
-  return `snippet.${ext}`;
-}
-
-/**
- * Writes text to the clipboard using the Clipboard API or fallback methods.
+ * Writes text to the clipboard using the Clipboard API with robust fallbacks.
  */
 async function writeClipboard(text: string): Promise<boolean> {
-  // Modern Clipboard API
+  // 1. Modern Async Clipboard API
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (err) {
-      console.warn('Clipboard API failed, falling back to execCommand.', err);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[CodeBlock] Clipboard API failed, falling back.');
+      }
     }
   }
 
-  // Legacy fallback
+  // 2. Legacy execCommand fallback
   if (typeof document !== 'undefined' && document.execCommand) {
     try {
       const textarea = document.createElement('textarea');
       textarea.value = text;
+      // Position off-screen and make invisible
       textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      textarea.setAttribute('readonly', '');
       textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      textarea.setAttribute('readonly', '');
+      textarea.setAttribute('aria-hidden', 'true');
 
       document.body.appendChild(textarea);
-
-      const selection = document.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(textarea);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      textarea.setSelectionRange(0, text.length);
+      textarea.focus();
+      textarea.select();
 
       const success = document.execCommand('copy');
       document.body.removeChild(textarea);
       return success;
     } catch (err) {
-      console.error('execCommand copy failed.', err);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[CodeBlock] execCommand copy failed.');
+      }
       return false;
     }
   }
@@ -281,11 +324,11 @@ async function writeClipboard(text: string): Promise<boolean> {
 }
 
 /* ============================================================================
-   VIRTUALIZED COMPONENTS
+    VIRTUALIZED COMPONENTS
    ============================================================================ */
 
 /**
- * Inner container for FixedSizeList that applies vertical padding.
+ * Inner container for FixedSizeList. Applies vertical padding correctly.
  */
 const VirtualizedInnerContainer = memo(
   forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement>>(({ style, ...rest }, ref) => (
@@ -293,9 +336,12 @@ const VirtualizedInnerContainer = memo(
       ref={ref}
       style={{
         ...style,
-        paddingTop: '1rem',
-        paddingBottom: '1rem',
+        // Ensure padding is applied within the scrollable area
+        paddingTop: `${CONFIG.VERTICAL_PADDING / 2}px`,
+        paddingBottom: `${CONFIG.VERTICAL_PADDING / 2}px`,
         boxSizing: 'border-box',
+        // Adjust the height calculation to include the padding
+        height: style?.height ? parseFloat(style.height as string) + CONFIG.VERTICAL_PADDING : style?.height,
       }}
       {...rest}
     />
@@ -304,22 +350,21 @@ const VirtualizedInnerContainer = memo(
 VirtualizedInnerContainer.displayName = 'VirtualizedInnerContainer';
 
 /**
- * Renders individual rows within the virtualized list.
+ * Renders individual rows within the virtualized list. Optimized and robust.
  */
 const VirtualizedRow = memo(({ index, style, data }: ListChildComponentProps) => {
-  if (!Array.isArray(data) || data.length === 0 || index >= data.length) {
-    return null;
-  }
+  if (!Array.isArray(data) || index >= data.length) return null;
 
   const row = data[index];
 
+  // Handle rare rendering failures gracefully
   if (!row || !React.isValidElement(row) || !row.props) {
     return (
       <div
         style={{
           ...style,
-          color: '#f87171',
-          backgroundColor: 'rgba(248, 113, 113, 0.1)',
+          color: '#f87171', // text-red-400
+          backgroundColor: 'rgba(248, 113, 113, 0.05)',
           paddingLeft: '1rem',
           fontStyle: 'italic',
           display: 'flex',
@@ -327,11 +372,13 @@ const VirtualizedRow = memo(({ index, style, data }: ListChildComponentProps) =>
         }}
         aria-label={`Error rendering line ${index + 1}`}
       >
+        <AlertTriangle size={14} className="mr-2" />
         (Line rendering failed)
       </div>
     );
   }
 
+  // Merge virtualization positioning styles with the row's intrinsic styles.
   const mergedStyle = {
     ...(row.props.style || {}),
     ...style,
@@ -342,12 +389,13 @@ const VirtualizedRow = memo(({ index, style, data }: ListChildComponentProps) =>
 VirtualizedRow.displayName = 'VirtualizedRow';
 
 /* ============================================================================
-   ERROR BOUNDARY
+    ERROR BOUNDARY
    ============================================================================ */
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   fallbackRenderer: () => React.ReactNode;
+  context: string;
 }
 
 interface ErrorBoundaryState {
@@ -355,10 +403,9 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Error boundary for virtualization failures.
- * Falls back to non-virtualized rendering on error.
+ * Error boundary for virtualization failures. Falls back to standard rendering on error.
  */
-class VirtualizationErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class CodeBlockErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -369,31 +416,32 @@ class VirtualizationErrorBoundary extends Component<ErrorBoundaryProps, ErrorBou
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log error to monitoring service in production
     console.error(
-      'CodeBlock Virtualization runtime error caught. Falling back to standard rendering.',
+      `[CodeBlock ErrorBoundary] Error caught in context: ${this.props.context}. Falling back.`,
       error,
       errorInfo
     );
   }
 
   render() {
-    if (typeof FixedSizeList === 'undefined' || !FixedSizeList) {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex-1 overflow-hidden">{this.props.fallbackRenderer()}</div>
-        </div>
-      );
+    // Environment check
+    if (this.props.context === 'Virtualization' && (typeof FixedSizeList === 'undefined' || !FixedSizeList)) {
+         return <div className="h-full overflow-hidden">{this.props.fallbackRenderer()}</div>;
     }
 
     if (this.state.hasError) {
       return (
         <div className="h-full flex flex-col">
-          <div
-            className="px-4 py-1 bg-yellow-950/50 border-b border-yellow-600/50 text-xs text-yellow-400"
-            role="alert"
-          >
-            Warning: Virtualization disabled due to a runtime error. Displaying in standard mode.
-          </div>
+          {this.props.context === 'Virtualization' && (
+              <div
+                className="px-4 py-1 bg-yellow-900/30 border-b border-yellow-700/30 text-xs text-yellow-500 flex items-center gap-2"
+                role="alert"
+              >
+                <AlertTriangle size={12} />
+                Performance optimization (virtualization) disabled due to a runtime error.
+              </div>
+          )}
           <div className="flex-1 overflow-hidden">{this.props.fallbackRenderer()}</div>
         </div>
       );
@@ -403,11 +451,11 @@ class VirtualizationErrorBoundary extends Component<ErrorBoundaryProps, ErrorBou
 }
 
 /* ============================================================================
-   UI SUB-COMPONENTS
+    UI SUB-COMPONENTS
    ============================================================================ */
 
 /**
- * Screen reader announcer for accessibility.
+ * Screen reader announcer (A11y).
  */
 const LiveAnnouncer: React.FC<{ message: string }> = memo(({ message }) => (
   <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
@@ -417,7 +465,7 @@ const LiveAnnouncer: React.FC<{ message: string }> = memo(({ message }) => (
 LiveAnnouncer.displayName = 'LiveAnnouncer';
 
 /**
- * Reusable toolbar action button/link component.
+ * Reusable, accessible toolbar action component.
  */
 const ToolbarAction = forwardRef<HTMLElement, ActionProps>(
   (
@@ -431,33 +479,50 @@ const ToolbarAction = forwardRef<HTMLElement, ActionProps>(
       href,
       download,
       className = '',
-      minimal = false,
+      variant = 'standard',
     },
     ref
   ) => {
+    const isMinimal = variant === 'minimal';
+
+    // Styling: Minimalist, precise interactions, clear focus states.
     const baseClasses = cn(
-      'inline-flex items-center transition-colors duration-100 ease-in-out',
+      'inline-flex items-center transition-all duration-150 ease-in-out',
       'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-      minimal
-        ? 'p-1.5 rounded-lg'
-        : 'gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-900/70',
+      // Sizing and spacing
+      isMinimal
+        ? 'p-2 rounded-md'
+        : 'gap-2 rounded-md px-3 py-1.5 text-xs font-medium focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950',
+
+      // State styling
       disabled
-        ? 'text-gray-600 cursor-not-allowed opacity-40'
+        ? 'text-gray-600 cursor-not-allowed opacity-50'
         : cn(
-            'text-gray-400 hover:text-white hover:bg-white/10',
-            active && (minimal ? 'text-white bg-white/15' : 'bg-white/10 text-white')
+            'text-gray-400 hover:text-white',
+            // Subtle "material" background on hover/active
+            isMinimal ? 'hover:bg-white/10' : 'hover:bg-zinc-800/70',
+            active && (isMinimal ? 'text-white bg-white/15' : 'bg-zinc-800 text-white')
           )
     );
 
-    const iconSize = minimal ? ICON_SIZE.MINIMAL : ICON_SIZE.STANDARD;
+    const iconSize = isMinimal ? ICON_SIZE.MINIMAL : ICON_SIZE.TOOLBAR;
 
     const content = (
       <>
         <Icon size={iconSize} strokeWidth={2} aria-hidden="true" />
-        {!minimal && <span className="hidden sm:inline">{label}</span>}
+        {!isMinimal && <span className="hidden sm:inline">{label}</span>}
       </>
     );
 
+    const handleClick = (e: React.MouseEvent) => {
+        if (disabled) {
+            e.preventDefault();
+            return;
+        }
+        onClick?.(e);
+    };
+
+    // Render as <a> tag if href is provided (for download links)
     if (href) {
       return (
         <a
@@ -468,21 +533,19 @@ const ToolbarAction = forwardRef<HTMLElement, ActionProps>(
           aria-label={tooltip}
           title={tooltip}
           aria-disabled={disabled}
-          onClick={(e) => {
-            if (disabled) e.preventDefault();
-            onClick?.();
-          }}
+          onClick={handleClick}
         >
           {content}
         </a>
       );
     }
 
+    // Render as <button> tag
     return (
       <button
         ref={ref as React.Ref<HTMLButtonElement>}
         type="button"
-        onClick={onClick}
+        onClick={handleClick}
         disabled={disabled}
         className={cn(baseClasses, className)}
         aria-label={tooltip}
@@ -497,11 +560,12 @@ const ToolbarAction = forwardRef<HTMLElement, ActionProps>(
 ToolbarAction.displayName = 'ToolbarAction';
 
 /**
- * Header component with file info and action buttons.
+ * Header component with file info and primary actions.
  */
 const CodeHeader: React.FC<CodeHeaderProps> = memo(
   ({
     label,
+    Icon,
     isWrapped,
     toggleWrap,
     isCollapsible,
@@ -511,20 +575,31 @@ const CodeHeader: React.FC<CodeHeaderProps> = memo(
     downloadName,
     copied,
     doCopy,
+    isStreaming,
   }) => {
     return (
-      <>
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-gradient-to-br from-gray-900/90 to-black/90 border-b border-purple-400/10 backdrop-blur-md sticky top-0 z-20 shadow-sm">
+      // Sticky positioning with a subtle "glass" effect (backdrop-blur).
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-zinc-900/90 border-b border-white/10 backdrop-blur-sm sticky top-0 z-20 shadow-md">
+        {/* File Info */}
         <div className="flex items-center gap-3 min-w-0">
-          <FileCode size={ICON_SIZE.HEADER} className="text-gray-500 flex-shrink-0" />
-          <span className="text-xs font-semibold text-gray-200 truncate block">{label}</span>
+          <Icon size={ICON_SIZE.HEADER} className="text-gray-500 flex-shrink-0" />
+          <span className="text-xs font-semibold text-gray-200 truncate block" title={label}>
+            {label}
+          </span>
+          {isStreaming && (
+             <div className="text-xs text-blue-400 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin" />
+                Streaming...
+            </div>
+          )}
         </div>
+        {/* Actions */}
         <div className="flex items-center gap-1">
           <ToolbarAction
             icon={WrapText}
             onClick={toggleWrap}
             label={isWrapped ? 'Unwrap' : 'Wrap'}
-            tooltip="Toggle line wrap (Alt+Z). Note: Wrapping disables virtualization."
+            tooltip="Toggle line wrap (Alt+Z). Note: Wrapping large files may affect performance."
             active={isWrapped}
           />
 
@@ -544,7 +619,7 @@ const CodeHeader: React.FC<CodeHeaderProps> = memo(
             href={downloadUrl ?? undefined}
             download={downloadName}
             label="Download"
-            tooltip="Download code as file"
+            tooltip="Download code snippet"
             disabled={!downloadUrl}
           />
 
@@ -553,26 +628,28 @@ const CodeHeader: React.FC<CodeHeaderProps> = memo(
             onClick={doCopy}
             label={copied ? 'Copied' : 'Copy'}
             tooltip="Copy code (Ctrl/⌘+Shift+C)"
-            className={copied ? 'text-green-400 hover:text-green-400 !bg-green-500/20' : ''}
+            // Distinct visual confirmation for successful copy
+            className={copied ? '!text-green-400 hover:!text-green-400 !bg-green-500/20' : ''}
           />
         </div>
       </div>
-      </>
     );
   }
 );
 CodeHeader.displayName = 'CodeHeader';
 
 /**
- * Hover toolbar for minimalist view.
+ * Floating toolbar for the minimalist view.
  */
 const HoverToolbar: React.FC<HoverToolbarProps> = memo(
   ({ isWrapped, toggleWrap, downloadUrl, downloadName, copied, doCopy }) => {
     return (
-      <div className="absolute top-2 right-2 z-20 transition-opacity duration-300 ease-in-out opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-auto">
-        <div className="flex items-center gap-1 bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-lg rounded-xl p-0.5 shadow-xl border border-purple-400/20">
+      // Fades in on hover/focus.
+      <div className="absolute top-3 right-3 z-20 transition-opacity duration-300 ease-in-out opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-auto">
+        {/* Toolbar "Pill" container with glass effect */}
+        <div className="flex items-center gap-0.5 bg-zinc-800/80 backdrop-blur-lg rounded-lg p-0.5 shadow-xl border border-white/10">
           <ToolbarAction
-            minimal
+            variant="minimal"
             icon={WrapText}
             onClick={toggleWrap}
             label=""
@@ -581,17 +658,17 @@ const HoverToolbar: React.FC<HoverToolbarProps> = memo(
           />
 
           <ToolbarAction
-            minimal
+            variant="minimal"
             icon={Download}
             href={downloadUrl ?? undefined}
             download={downloadName}
             label=""
-            tooltip="Download code as file"
+            tooltip="Download code snippet"
             disabled={!downloadUrl}
           />
 
           <ToolbarAction
-            minimal
+            variant="minimal"
             icon={copied ? Check : Copy}
             onClick={doCopy}
             label=""
@@ -606,11 +683,11 @@ const HoverToolbar: React.FC<HoverToolbarProps> = memo(
 HoverToolbar.displayName = 'HoverToolbar';
 
 /* ============================================================================
-   RENDERERS
+    RENDERERS
    ============================================================================ */
 
 /**
- * Non-virtualized renderer for standard code display.
+ * Standard, non-virtualized renderer. Used for shorter code, streaming, or fallback.
  */
 const NonVirtualizedRenderer: React.FC<NonVirtualizedRendererProps> = memo(
   ({
@@ -628,11 +705,14 @@ const NonVirtualizedRenderer: React.FC<NonVirtualizedRendererProps> = memo(
   }) => (
     <div
       ref={containerRef}
-      className='overflow-auto custom-scrollbar h-full py-4 transition-opacity duration-200 ease-in-out focus:outline-none'
+      // 'code-scrollbar' class assumes global CSS for stylized (thin, dark) scrollbars.
+      className='overflow-auto code-scrollbar h-full transition-opacity duration-200 ease-in-out focus:outline-none'
       onScroll={onScroll}
       tabIndex={tabIndex}
       role="code"
       aria-label="Code content"
+      // Apply vertical padding consistent with the virtualized view.
+      style={{ padding: `${CONFIG.VERTICAL_PADDING / 2}px 0` }}
     >
       <SyntaxHighlighter
         language={detectedLanguage}
@@ -641,6 +721,7 @@ const NonVirtualizedRenderer: React.FC<NonVirtualizedRendererProps> = memo(
         codeTagProps={{ style: { fontFamily: highlighterBaseStyle.fontFamily } }}
         showLineNumbers={showLineNumbers}
         lineNumberStyle={lineNumberStyle}
+        // wrapLines=true is required to enable linePropsRenderer.
         wrapLines={true}
         wrapLongLines={isWrapped}
         lineProps={linePropsRenderer}
@@ -653,7 +734,7 @@ const NonVirtualizedRenderer: React.FC<NonVirtualizedRendererProps> = memo(
 NonVirtualizedRenderer.displayName = 'NonVirtualizedRenderer';
 
 /* ============================================================================
-   MAIN COMPONENT
+    MAIN COMPONENT
    ============================================================================ */
 
 export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
@@ -668,7 +749,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     collapsible,
     collapsedHeight = CONFIG.DEFAULT_COLLAPSED_HEIGHT,
     height: heightOverride,
-    theme = vscDarkPlus,
+    theme = defaultThemeStyle,
     className = '',
     onCopy,
     inline,
@@ -684,7 +765,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
   const listRef = useRef<FixedSizeList>(null);
   const virtualizedOuterRef = useRef<HTMLDivElement>(null);
   const nonVirtualizedContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll management refs
   const lastScrollTop = useRef<number>(0);
+  const isUserNearBottom = useRef<boolean>(true); // Track user scroll intent for streaming
+
+  // Timer refs
   const copiedTimer = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
 
@@ -693,6 +779,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
      -------------------------------------------------------------------------- */
   const rawInput = value ?? extractText(children);
   const safeInput = typeof rawInput === 'string' ? rawInput : String(rawInput || '');
+  // Normalize line endings (CRLF to LF) and trim whitespace.
   const code = useMemo(() => safeInput.replace(/\r\n/g, '\n').trim(), [safeInput]);
 
   /* --------------------------------------------------------------------------
@@ -700,6 +787,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
      -------------------------------------------------------------------------- */
   const renderMode = useMemo((): 'inline' | 'block' => {
     if (inline) return 'inline';
+    // Smart detection for short, single-line snippets.
     if (
       !code.includes('\n') &&
       code.length > 0 &&
@@ -721,19 +809,26 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     return 'text';
   }, [language, className]);
 
+  // Determine the icon based on language
+  const HeaderIcon = useMemo(() => {
+      if (detectedLanguage === 'bash' || detectedLanguage === 'shell' || detectedLanguage === 'sh') {
+          return Terminal;
+      }
+      return FileCodeIcon;
+  }, [detectedLanguage]);
+
   /* --------------------------------------------------------------------------
      DATA PREPARATION
      -------------------------------------------------------------------------- */
   const lines = useMemo(() => (code === '' ? [] : code.split('\n')), [code]);
   const highlights = useMemo(() => parseHighlightSpec(highlightLines), [highlightLines]);
-  const isMinimalistView = lines.length <= CONFIG.MINIMALIST_VIEW_MAX_LINES && lines.length > 0;
+  const isMinimalistView = lines.length <= CONFIG.MINIMALIST_VIEW_MAX_LINES && lines.length > 0 && !filename && !heightOverride;
 
   /* --------------------------------------------------------------------------
      STATE
      -------------------------------------------------------------------------- */
   const [isWrapped, setIsWrapped] = useState<boolean>(wrap);
   const [copied, setCopied] = useState<boolean>(false);
-  const [copyError, setCopyError] = useState<boolean>(false);
   const [announcement, setAnnouncement] = useState<string>('');
   const [renderCounter, setRenderCounter] = useState<number>(0);
   const [expanded, setExpanded] = useState<boolean>(true);
@@ -742,16 +837,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
   /* --------------------------------------------------------------------------
      VIRTUALIZATION LOGIC
      -------------------------------------------------------------------------- */
+
   const useVirtualization = useMemo(() => {
-    if (typeof FixedSizeList === 'undefined' || !FixedSizeList || virtualizationDisabled) {
-      return false;
-    }
-    if (isStreaming) {
-      return false;
-    }
+    if (typeof FixedSizeList === 'undefined' || virtualizationDisabled) return false;
+    // Disable during streaming as content changes rapidly.
+    if (isStreaming) return false;
+    // Virtualization requires fixed height (no wrapping) and sufficient lines.
     return !isWrapped && lines.length > CONFIG.VIRTUALIZATION_THRESHOLD;
   }, [isStreaming, isWrapped, virtualizationDisabled, lines.length]);
 
+  // Effect: Reset virtualization state when inputs change.
   useEffect(() => {
     highlightedRowsRef.current = [];
     needsProcessingRef.current = true;
@@ -766,12 +861,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     };
   }, [code, detectedLanguage, showLineNumbers, highlightLines, theme]);
 
+  // Effect: Manage the virtualization processing timeout.
   useEffect(() => {
     if (!useVirtualization || !needsProcessingRef.current) {
-      if (processingTimeoutRef.current) {
-        window.clearTimeout(processingTimeoutRef.current);
-        processingTimeoutRef.current = null;
-      }
+       if (processingTimeoutRef.current) {
+            window.clearTimeout(processingTimeoutRef.current);
+            processingTimeoutRef.current = null;
+        }
       return;
     }
 
@@ -779,9 +875,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
       window.clearTimeout(processingTimeoutRef.current);
     }
 
+    // Set timeout fallback.
     processingTimeoutRef.current = window.setTimeout(() => {
       if (needsProcessingRef.current) {
-        console.warn(`CodeBlock virtualization processing timed out (${CONFIG.VIRTUALIZATION_PROCESSING_TIMEOUT}ms). Falling back to standard rendering.`);
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn(`[CodeBlock] Virtualization processing timed out. Falling back to standard rendering.`);
+        }
         needsProcessingRef.current = false;
         setVirtualizationDisabled(true);
         setRenderCounter((prev) => prev + 1);
@@ -797,29 +896,81 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     };
   }, [useVirtualization, renderCounter]);
 
+  const safeItemData = useMemo(() => highlightedRowsRef.current || [], [renderCounter]);
+
+  /* --------------------------------------------------------------------------
+     SCROLL & STREAMING MANAGEMENT
+     -------------------------------------------------------------------------- */
+
+  // Unified scroll state update logic
+  const updateScrollState = useCallback((container: HTMLElement | null) => {
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    lastScrollTop.current = scrollTop;
+    // Threshold of 1.5 lines to determine if user is "near bottom"
+    const threshold = CONFIG.LINE_HEIGHT * 1.5;
+    isUserNearBottom.current = scrollHeight - scrollTop <= clientHeight + threshold;
+  }, []);
+
+  const handleListScroll = useCallback(({ scrollOffset }: { scrollOffset: number }) => {
+    lastScrollTop.current = scrollOffset;
+    // Tracking near bottom in virtualized lists during streaming is usually not needed as virtualization is disabled.
+  }, []);
+
+  const handleNonVirtualizedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    updateScrollState(event.currentTarget);
+  }, [updateScrollState]);
+
+  // Effect: Restore scroll position when switching modes (e.g., toggling wrap).
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!useVirtualization && nonVirtualizedContainerRef.current) {
         nonVirtualizedContainerRef.current.scrollTop = lastScrollTop.current;
+        updateScrollState(nonVirtualizedContainerRef.current);
       }
+       // Virtualized list restores scroll via initialScrollOffset prop.
     }, 0);
     return () => clearTimeout(timer);
-  }, [useVirtualization]);
+  }, [useVirtualization, updateScrollState]);
 
-  const safeItemData = useMemo(() => highlightedRowsRef.current || [], [renderCounter]);
+  // Effect: Intelligent auto-scroll for streaming content
+  useEffect(() => {
+    if (!isStreaming || useVirtualization) return;
+
+    // Only auto-scroll if the user is already near the bottom
+    if (isUserNearBottom.current) {
+      const container = nonVirtualizedContainerRef.current;
+      if (container) {
+        try {
+          // Use 'smooth' behavior for a polished experience, 'auto' if distance is large
+          const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+          const behavior = distance > container.clientHeight * 2 ? 'auto' : 'smooth';
+
+          container.scrollTo({ top: container.scrollHeight, behavior });
+        } catch (e) {
+          // Fallback for browsers not supporting scrollTo options
+          container.scrollTop = container.scrollHeight;
+        }
+      }
+    }
+  }, [code, isStreaming, useVirtualization]); // Depend on 'code' to trigger scroll on update
+
 
   /* --------------------------------------------------------------------------
      COLLAPSIBILITY LOGIC
      -------------------------------------------------------------------------- */
+
   const isCollapsible = useMemo(() => {
     if (heightOverride) return false;
     if (lines.length === 0 || isMinimalistView) return false;
+
     if (collapsible !== undefined) return collapsible;
 
-    const currentHeight =
-      (safeItemData.length > 0 ? safeItemData.length : lines.length) * CONFIG.LINE_HEIGHT;
+    // Auto-detection based on content height.
+    const lineCount = safeItemData.length > 0 ? safeItemData.length : lines.length;
+    const contentHeight = lineCount * CONFIG.LINE_HEIGHT + CONFIG.VERTICAL_PADDING;
 
-    return currentHeight + CONFIG.VERTICAL_PADDING > collapsedHeight * 1.25;
+    return contentHeight > collapsedHeight * 1.25;
   }, [
     collapsible,
     lines.length,
@@ -830,59 +981,47 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
   ]);
 
   useEffect(() => {
-    if (isMinimalistView || !isCollapsible) {
+    if (!isCollapsible) {
       setExpanded(true);
     }
-  }, [isMinimalistView, isCollapsible]);
+  }, [isCollapsible]);
 
   /* --------------------------------------------------------------------------
      EVENT HANDLERS
      -------------------------------------------------------------------------- */
+
   const doCopy = useCallback(async () => {
-    try {
-      setCopyError(false);
-      const ok = await writeClipboard(code);
-      if (ok) {
-        setCopied(true);
-        setCopyError(false);
-        setAnnouncement('Code copied to clipboard.');
-        onCopy?.(code);
-        if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
-        copiedTimer.current = window.setTimeout(() => {
-          setCopied(false);
-          setTimeout(
-            () =>
-              setAnnouncement((prev) => (prev === 'Code copied to clipboard.' ? '' : prev)),
-            500
-          );
-        }, CONFIG.COPY_CONFIRMATION_DURATION);
-      } else {
-        setCopyError(true);
+    if (copied) return; // Prevent spam clicks
+
+    const ok = await writeClipboard(code);
+    if (ok) {
+      setCopied(true);
+      setAnnouncement('Code copied to clipboard.');
+      onCopy?.(code);
+
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => {
         setCopied(false);
-        setAnnouncement('Failed to copy code. Please try again.');
-        setTimeout(() => {
-          setCopyError(false);
-          setAnnouncement('');
-        }, 3000);
-      }
-    } catch (error) {
-      console.error('Copy operation failed:', error);
-      setCopyError(true);
+        setTimeout(
+          () => setAnnouncement((prev) => (prev === 'Code copied to clipboard.' ? '' : prev)),
+          500
+        );
+      }, CONFIG.COPY_CONFIRMATION_DURATION);
+    } else {
       setCopied(false);
-      setAnnouncement('Failed to copy code. Please try again.');
-      setTimeout(() => {
-        setCopyError(false);
-        setAnnouncement('');
-      }, 3000);
+      setAnnouncement('Failed to copy code. Please check browser permissions.');
+       setTimeout(() => {
+          setAnnouncement('');
+        }, 5000);
     }
-  }, [code, onCopy]);
+  }, [code, onCopy, copied]);
 
   const toggleWrap = useCallback(() => {
     setIsWrapped((v) => {
       const newValue = !v;
       const virtualizationStatus =
         newValue && lines.length > CONFIG.VIRTUALIZATION_THRESHOLD
-          ? ' Virtualization disabled.'
+          ? ' Performance optimization disabled.'
           : '';
       setAnnouncement(
         `Line wrapping ${newValue ? 'enabled' : 'disabled'}.${virtualizationStatus}`
@@ -897,6 +1036,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
         const newExpandedState = !v;
         setAnnouncement(`Code block ${newExpandedState ? 'expanded' : 'collapsed'}.`);
 
+        // A11y: Move focus into the code area when expanding via the overlay button.
         if (newExpandedState && focusOnExpand) {
           setTimeout(() => {
             const target = useVirtualization
@@ -911,14 +1051,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     [useVirtualization]
   );
 
-  const handleListScroll = useCallback(({ scrollOffset }: { scrollOffset: number }) => {
-    lastScrollTop.current = scrollOffset;
-  }, []);
-
-  const handleNonVirtualizedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-    lastScrollTop.current = event.currentTarget.scrollTop;
-  }, []);
-
+  // Keyboard shortcuts (A11y).
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       // Alt+Z: Toggle wrap
@@ -965,6 +1098,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     }
   }, [code, detectedLanguage]);
 
+   const downloadName = useMemo(() => getDownloadName(filename, detectedLanguage), [filename, detectedLanguage]);
+
+  // Effect: Clean up the Blob URL and timers.
   useEffect(() => {
     return () => {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
@@ -973,14 +1109,15 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
   }, [blobUrl]);
 
   /* --------------------------------------------------------------------------
-     STYLING
+     STYLING DEFINITIONS
      -------------------------------------------------------------------------- */
-  const highlighterBaseStyle: React.CSSProperties = useMemo(
+
+  const highlighterBaseStyle: CSSProperties = useMemo(
     () => ({
       fontFamily:
-        'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-      fontSize: '0.875rem',
-      lineHeight: '1.6',
+        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      fontSize: '0.875rem', // text-sm (14px)
+      lineHeight: '1.6', // leading-normal (Matches CONFIG.LINE_HEIGHT)
       backgroundColor: 'transparent',
       margin: 0,
       padding: 0,
@@ -988,30 +1125,31 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     []
   );
 
-  const lineNumberStyle: React.CSSProperties = useMemo(
+  const lineNumberStyle: CSSProperties = useMemo(
     () => ({
-      minWidth: '2.5em',
+      minWidth: '3em',
       paddingRight: '1em',
       textAlign: 'right',
       userSelect: 'none',
-      color: '#858585',
+      color: '#6b7280', // text-gray-500
       display: 'inline-block',
+      boxSizing: 'border-box',
     }),
     []
   );
 
   const linePropsRenderer = useCallback(
     (lineNumber: number) => {
-      const style: React.CSSProperties = {
+      const style: CSSProperties = {
         display: 'block',
         paddingLeft: '1rem',
         paddingRight: '1rem',
       };
-      const isHighlighted = highlights.includes(lineNumber);
+      const isHighlighted = highlights.has(lineNumber);
 
       if (isHighlighted) {
-        style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
-        style.borderLeft = '2px solid #3b82f6';
+        style.backgroundColor = CONFIG.HIGHLIGHT_COLOR;
+        style.borderLeft = `2px solid ${CONFIG.HIGHLIGHT_BORDER_COLOR}`;
         style.paddingLeft = 'calc(1rem - 2px)';
       }
       return { style };
@@ -1020,34 +1158,49 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
   );
 
   /* --------------------------------------------------------------------------
-     VIRTUALIZATION PROCESSOR (THE CRITICAL FIX)
+     VIRTUALIZATION PROCESSOR (Core Integration Logic)
      -------------------------------------------------------------------------- */
-  const virtualizationProcessor: (props: { rows: React.ReactNode[] }) => React.ReactNode =
-    useCallback(({ rows }) => {
+
+  /**
+   * A custom renderer used during the hidden pre-processing step to capture
+   * the structure generated by SyntaxHighlighter for virtualization.
+   */
+  const virtualizationProcessor = useCallback(
+    ({ rows }: RendererProps): React.ReactNode => {
       const safeRows = Array.isArray(rows)
         ? rows.filter((row): row is React.ReactElement => React.isValidElement(row))
         : [];
 
       if (needsProcessingRef.current && safeRows.length > 0) {
+        // Stabilize keys for React's reconciliation.
         const stabilizedRows = safeRows.map((row, index) => {
-          const stableKey = `cb-line-${index}`;
+          const stableKey = `cb-v-line-${index}`;
           if (!row.key || row.key !== stableKey) {
             return React.cloneElement(row, { key: stableKey });
           }
           return row;
         });
 
+        // Store the processed rows and signal completion.
         highlightedRowsRef.current = stabilizedRows;
         needsProcessingRef.current = false;
 
+        // Clear the processing timeout.
         if (processingTimeoutRef.current) {
           window.clearTimeout(processingTimeoutRef.current);
           processingTimeoutRef.current = null;
         }
 
-        queueMicrotask(() => {
-          setRenderCounter((prev) => prev + 1);
-        });
+        // Schedule a state update (re-render) in the next microtask.
+        if (typeof queueMicrotask === 'function') {
+            queueMicrotask(() => {
+              setRenderCounter((prev) => prev + 1);
+            });
+        } else {
+            Promise.resolve().then(() => {
+                setRenderCounter((prev) => prev + 1);
+            });
+        }
       }
 
       return null;
@@ -1068,6 +1221,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
       isWrapped,
       linePropsRenderer,
       code,
+      // A11y: Make the code area non-focusable when collapsed.
       tabIndex: isCollapsible && !expanded ? -1 : 0,
     }),
     [
@@ -1088,19 +1242,22 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
   /* --------------------------------------------------------------------------
      VIEWPORT HEIGHT CALCULATION
      -------------------------------------------------------------------------- */
+
   const viewportHeight = useMemo(() => {
     if (heightOverride) return heightOverride;
     if (isMinimalistView) return 'auto';
 
-    const contentHeight =
-      (safeItemData.length > 0 ? safeItemData.length : lines.length) * CONFIG.LINE_HEIGHT +
-      CONFIG.VERTICAL_PADDING;
+    const lineCount = safeItemData.length > 0 ? safeItemData.length : lines.length;
+    const contentHeight = lineCount * CONFIG.LINE_HEIGHT + CONFIG.VERTICAL_PADDING;
 
     if (isCollapsible && !expanded) {
       return collapsedHeight;
     }
 
-    const maxHeight = typeof window !== 'undefined' ? window.innerHeight * 0.7 : 600;
+    const maxHeight = typeof window !== 'undefined'
+        ? window.innerHeight * CONFIG.MAX_VIEWPORT_HEIGHT_RATIO
+        : 600;
+
     return Math.min(maxHeight, contentHeight);
   }, [
     isCollapsible,
@@ -1119,8 +1276,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
     return (
       <code
         className={cn(
-          'px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[0.85em] break-words shadow-sm',
-          'bg-gradient-to-br from-gray-800/80 to-gray-900/80 border border-purple-400/20 text-purple-300',
+          'px-1.5 py-0.5 mx-0.5 rounded font-mono text-[0.9em] break-words shadow-sm',
+          // Styling: distinct background and border.
+          'bg-zinc-800 border border-white/10 text-gray-200',
           className
         )}
       >
@@ -1133,7 +1291,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
      EMPTY BLOCK HANDLING
      -------------------------------------------------------------------------- */
   if (lines.length === 0) {
-    if (filename) {
+    // Render an empty state if filename is provided or streaming is active.
+    if (filename || isStreaming) {
       return (
         <div
           className={cn(
@@ -1141,18 +1300,47 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
             className
           )}
           role="region"
-          aria-label={`Empty code block for ${filename}`}
+          aria-label={filename ? `Empty code block for ${filename}` : 'Code block'}
         >
-          <div className="px-3 sm:px-4 py-2 bg-gradient-to-br from-gray-900/90 to-black/90 border-b border-purple-400/10">
-            <div className="flex items-center gap-3 min-w-0">
-              <FileCode size={ICON_SIZE.HEADER} className="text-gray-500 flex-shrink-0" />
-              <span className="text-xs font-semibold text-gray-200 truncate block">
-                {filename}
-              </span>
-            </div>
-          </div>
-          <div className="p-4 text-sm text-gray-500 italic font-mono" aria-live="polite">
-            (File is empty)
+         {(!isMinimalistView || filename) && (
+             <CodeHeader
+              label={filename?.trim() || detectedLanguage}
+              Icon={HeaderIcon}
+              isWrapped={isWrapped}
+              toggleWrap={toggleWrap}
+              isCollapsible={false}
+              isExpanded={true}
+              toggleExpanded={() => {}}
+              downloadUrl={undefined}
+              downloadName={downloadName}
+              copied={false}
+              doCopy={() => {}}
+              isStreaming={isStreaming}
+            />
+         )}
+          <div className="p-4 text-sm text-gray-500 font-mono" aria-live="polite" style={{ height: heightOverride || 'auto' }}>
+             {isStreaming ? (
+              // Blinking cursor effect for streaming initialization
+              <>
+                <style>
+                {`
+                  @keyframes blink-caret-block {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0; }
+                  }
+                  .animate-blink-caret-block {
+                    animation: blink-caret-block 1s step-end infinite;
+                  }
+                  @media (prefers-reduced-motion: reduce) {
+                    .animate-blink-caret-block { animation: none; }
+                  }
+                `}
+                </style>
+                <span className="inline-block w-2 h-4 bg-blue-500 align-text-bottom animate-blink-caret-block" aria-hidden="true" />
+              </>
+            ) : (
+              <span className='italic'>(File is empty)</span>
+            )}
           </div>
         </div>
       );
@@ -1170,39 +1358,43 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
       role="region"
       aria-label={filename ? `Code block for ${filename}` : 'Code block'}
       className={cn(
-        'group relative my-6 rounded-xl overflow-hidden transition-all duration-300 ease-in-out backdrop-blur-sm',
+        'group relative my-6 rounded-xl overflow-hidden transition-all duration-300 ease-in-out',
         'focus-within:ring-2 focus-within:ring-blue-500/70',
+        // Core styling: Deep background, subtle border, and shadow for depth.
+        'bg-zinc-950 border border-white/10',
         isMinimalistView
-          ? 'bg-zinc-950/80 border border-white/5 shadow-md hover:shadow-lg hover:border-white/10'
-          : 'bg-zinc-950 border border-white/10 shadow-xl hover:shadow-2xl',
+          ? 'shadow-md hover:shadow-lg'
+          : 'shadow-xl hover:shadow-2xl',
         className
       )}
       data-language={detectedLanguage}
     >
       <LiveAnnouncer message={announcement} />
 
-      {/* Header/Toolbar */}
+      {/* Header or Toolbar */}
       {isMinimalistView ? (
         <HoverToolbar
           isWrapped={isWrapped}
           toggleWrap={toggleWrap}
           downloadUrl={blobUrl}
-          downloadName={getDownloadName(filename, detectedLanguage)}
+          downloadName={downloadName}
           copied={copied}
           doCopy={doCopy}
         />
       ) : (
         <CodeHeader
           label={filename?.trim() || detectedLanguage}
+          Icon={HeaderIcon}
           isWrapped={isWrapped}
           toggleWrap={toggleWrap}
           isCollapsible={isCollapsible}
           isExpanded={expanded}
           toggleExpanded={toggleExpanded}
           downloadUrl={blobUrl}
-          downloadName={getDownloadName(filename, detectedLanguage)}
+          downloadName={downloadName}
           copied={copied}
           doCopy={doCopy}
+          isStreaming={isStreaming}
         />
       )}
 
@@ -1214,11 +1406,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
           overflow: isMinimalistView && viewportHeight === 'auto' ? 'visible' : 'hidden',
         }}
       >
-        {/* Collapse Overlay */}
+        {/* Collapse Overlay (Fade effect and Expand button) */}
         {isCollapsible && !expanded && (
           <div
             onClick={() => toggleExpanded(true)}
-            className="cursor-pointer absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-zinc-950/95 to-transparent z-10 flex items-end justify-center pb-4 transition-opacity duration-200 hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ring-inset"
+            className="cursor-pointer absolute inset-x-0 bottom-0 h-32 z-10 flex items-end justify-center pb-4 transition-opacity duration-200 hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ring-inset"
+            // Gradient fade effect
+            style={{ background: 'linear-gradient(to top, rgba(9, 9, 11, 0.98) 30%, transparent 100%)' }}
             title="Expand code (Ctrl/⌘ + .)"
             role="button"
             aria-label="Expand code block"
@@ -1230,20 +1424,23 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
               }
             }}
           >
-            <span className="text-sm font-medium text-white/90 bg-gradient-to-br from-gray-800/60 to-gray-900/60 px-4 py-2 rounded-lg shadow-xl backdrop-blur-lg border border-purple-400/20 hover:from-gray-800/80 hover:to-gray-900/80 transition-colors duration-200 ease-out">
+            {/* Expand Button */}
+            <span className="text-sm font-medium text-white/90 bg-zinc-800/70 px-4 py-2 rounded-lg shadow-xl backdrop-blur-md border border-white/20 hover:bg-zinc-800 transition-colors duration-200 ease-out">
               Expand Code
             </span>
           </div>
         )}
 
-        {/* Virtualization Boundary */}
-        <VirtualizationErrorBoundary
+        {/* Virtualization Boundary and Content Rendering */}
+        <CodeBlockErrorBoundary
+          context={useVirtualization ? "Virtualization" : "Standard"}
           fallbackRenderer={() => <NonVirtualizedRenderer {...nonVirtualizedProps} />}
         >
           {useVirtualization ? (
             <>
+              {/* Hidden Pre-processor: Renders the code off-screen to capture the structure. */}
               {needsProcessingRef.current && (
-                <div style={{ display: 'none' }} aria-hidden="true">
+                <div style={{ display: 'none', visibility: 'hidden' }} aria-hidden="true">
                   <SyntaxHighlighter
                     language={detectedLanguage}
                     style={theme}
@@ -1253,14 +1450,15 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
                     lineNumberStyle={lineNumberStyle}
                     wrapLines={true}
                     lineProps={linePropsRenderer}
-                    // @ts-ignore - renderer prop type mismatch
-                    renderer={virtualizationProcessor}
+                    // Use the custom processor renderer.
+                    renderer={virtualizationProcessor as any}
                   >
                     {code}
                   </SyntaxHighlighter>
                 </div>
               )}
 
+              {/* Virtualized List Container */}
               <div className="h-full w-full">
                 <AutoSizer>
                   {({ width, height }) => {
@@ -1269,51 +1467,26 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
                     const isDataReady = !needsProcessingRef.current && safeItemData.length > 0;
                     const isLayoutReady = safeWidth > 0 && safeHeight > 0;
 
+                    // Display loading/processing indicator.
                     if (!isDataReady || !isLayoutReady) {
                       return (
                         <div
-                          className="flex items-center justify-center h-full w-full relative overflow-hidden transition-opacity duration-300 ease-in-out processing-container"
-                          style={{ background: 'rgba(0, 0, 0, 0.3)' }}
+                          className="flex items-center justify-center h-full w-full relative overflow-hidden transition-opacity duration-300 ease-in-out"
+                          style={{ background: 'rgba(0, 0, 0, 0.1)' }}
                           aria-live="polite"
                           role="status"
                           aria-label="Analyzing code structure"
                         >
-                          <style>
-                            {`
-                              @keyframes shimmer {
-                                0% { background-position: -200% 0; }
-                                100% { background-position: 200% 0; }
-                              }
-                              @keyframes blink-block {
-                                0%, 100% { opacity: 0; }
-                                50% { opacity: 1; }
-                              }
-                              .animate-shimmer {
-                                background-image: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
-                                background-size: 200% 100%;
-                                animation: shimmer 1.5s linear infinite;
-                              }
-                              .animate-blink-block {
-                                animation: blink-block 1.1s steps(1, end) infinite;
-                              }
-                              @media (prefers-reduced-motion: reduce) {
-                                .animate-shimmer, .animate-blink-block {
-                                  animation: none !important;
-                                }
-                              }
-                            `}
-                          </style>
-                          <div className="px-6 py-3 rounded-xl shadow-xl backdrop-blur-lg bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-purple-400/20 relative overflow-hidden">
-                            <div className="absolute inset-0 animate-shimmer" aria-hidden="true" />
-                            <div className="flex items-center font-mono text-sm text-white/95 relative z-10">
-                              <span>Analyzing code</span>
-                              <span className="ml-1 animate-blink-block" aria-hidden="true">█</span>
+                          {/* Processing Indicator Pill */}
+                           <div className="px-6 py-3 rounded-xl shadow-xl backdrop-blur-lg bg-zinc-800/70 border border-white/20 flex items-center font-mono text-sm text-white/90">
+                                <Loader2 size={16} className="animate-spin mr-3" />
+                                <span>Analyzing...</span>
                             </div>
-                          </div>
                         </div>
                       );
                     }
 
+                    // Render the virtualized list.
                     return (
                       <FixedSizeList
                         ref={listRef}
@@ -1327,7 +1500,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
                         onScroll={handleListScroll}
                         innerElementType={VirtualizedInnerContainer}
                         tabIndex={isCollapsible && !expanded ? -1 : 0}
-                        className="custom-scrollbar focus:outline-none"
+                        className="code-scrollbar focus:outline-none"
                         role="code"
                         aria-label="Virtualized code content"
                         style={{
@@ -1345,9 +1518,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = (props) => {
               </div>
             </>
           ) : (
+            // Fallback to standard rendering.
             <NonVirtualizedRenderer {...nonVirtualizedProps} />
           )}
-        </VirtualizationErrorBoundary>
+        </CodeBlockErrorBoundary>
       </div>
     </div>
   );
