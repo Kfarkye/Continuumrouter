@@ -238,6 +238,66 @@ pre {
   /* zinc-200 */
   font-size: 0.9em;
 }
+
+/* ChatGPT-style spacing overrides */
+.prose {
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.prose p {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+  padding-left: 1.625em;
+}
+
+.prose li {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose li::marker {
+  color: #71717a;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  margin-top: 1.75em;
+  margin-bottom: 0.75em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+.prose p + ul,
+.prose p + ol {
+  margin-top: 0.75em;
+}
+
+.prose ul + p,
+.prose ol + p {
+  margin-top: 1em;
+}
+
 /* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
   * {

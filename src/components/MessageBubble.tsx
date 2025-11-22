@@ -436,15 +436,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({
               {message.content ? (
                 // Use Tailwind Prose for typography control. Customized for dark/glass background.
                 // Requires Tailwind Typography plugin.
-                <div className="prose prose-invert prose-sm max-w-none
-                                    prose-p:text-zinc-300 prose-p:leading-7
-                                    prose-headings:font-medium prose-headings:text-zinc-100
+                <div className="prose prose-invert max-w-none
+                                    prose-p:my-5 prose-p:leading-7 prose-p:text-zinc-300
+                                    prose-headings:mt-7 prose-headings:mb-3 prose-headings:font-semibold prose-headings:text-zinc-100
                                     prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-a:no-underline hover:prose-a:underline
-                                    prose-strong:text-zinc-100 prose-strong:font-medium
-                                    prose-code:text-zinc-200 prose-code:bg-white/10 prose-code:px-1 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none
+                                    prose-strong:text-zinc-200 prose-strong:font-semibold
+                                    prose-code:text-zinc-200 prose-code:bg-white/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none prose-code:font-medium
                                     prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0
-                                    prose-ul:my-2 prose-li:my-0.5
-                                    prose-hr:border-white/10
+                                    prose-ul:my-5 prose-ul:pl-7
+                                    prose-ol:my-5 prose-ol:pl-7
+                                    prose-li:my-2 prose-li:leading-6
+                                    prose-hr:border-white/10 prose-hr:my-8
+                                    prose-blockquote:border-l-zinc-600 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-zinc-400
                                   ">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
