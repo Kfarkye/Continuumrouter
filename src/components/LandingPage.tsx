@@ -22,7 +22,7 @@ const revolutionaryExamples = [
     color: 'text-purple-400',
   },
   {
-    line1: 'Context windows aren't the problem',
+    line1: "Context windows aren't the problem",
     line2: 'Management is',
     color: 'text-teal-400',
   },
@@ -43,8 +43,8 @@ const revolutionaryExamples = [
 // ============================================================================
 
 const Logo: React.FC<{ size?: 'sm' | 'lg' }> = ({ size = 'sm' }) => (
-  <div className={`rounded-xl bg-white/5 backdrop-blur-md flex items-center justify-center shadow-lg ${size === 'sm' ? 'w-10 h-10' : 'w-16 h-16'}`}>
-    <Command className={`text-white/90 ${size === 'sm' ? 'w-5 h-5' : 'w-8 h-8'}`} strokeWidth={1.5} />
+  <div className={`rounded-xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 backdrop-blur-md flex items-center justify-center shadow-lg border border-white/10 ${size === 'sm' ? 'w-10 h-10' : 'w-16 h-16'}`}>
+    <Command className={`text-white ${size === 'sm' ? 'w-5 h-5' : 'w-8 h-8'}`} strokeWidth={2} />
   </div>
 );
 
@@ -55,11 +55,11 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'primary', loading = false, children, className = '', ...props }, ref) => {
-    const baseStyles = "flex items-center justify-center py-3.5 px-6 min-h-[52px] font-semibold rounded-full transition-all duration-200 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
-    
+    const baseStyles = "flex items-center justify-center py-3.5 px-6 min-h-[52px] font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black shadow-sm";
+
     const variantStyles = variant === 'primary'
-      ? 'bg-blue-600 hover:bg-blue-700 text-white focus-visible:ring-blue-500'
-      : 'bg-white/10 hover:bg-white/20 text-white focus-visible:ring-white/50 backdrop-blur-sm';
+      ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white focus-visible:ring-blue-500 shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30'
+      : 'bg-white/10 hover:bg-white/15 active:bg-white/20 text-white focus-visible:ring-white/50 backdrop-blur-sm border border-white/10';
 
     return (
       <button ref={ref} className={`${baseStyles} ${variantStyles} ${className}`} disabled={loading || props.disabled} {...props}>
@@ -74,7 +74,7 @@ const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputEl
   (props, ref) => (
     <input
       ref={ref}
-      className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white/90 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/70 transition-all duration-200 placeholder:text-white/40"
+      className="w-full px-4 py-3.5 bg-white/5 border border-white/10 text-white placeholder:text-white/40 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-500/50 hover:border-white/20 transition-all duration-200 text-base"
       {...props}
     />
   )
@@ -109,23 +109,27 @@ const ShowcasePanel: React.FC = () => {
   const currentExample = revolutionaryExamples[currentExampleIndex];
 
   return (
-    <div className="hidden lg:flex lg:flex-1 flex-col p-10 bg-gradient-to-br from-gray-900/90 to-black border-r border-white/5">
+    <div className="hidden lg:flex lg:flex-1 flex-col p-12 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black border-r border-white/5 relative overflow-hidden">
+      {/* Subtle background gradient orbs */}
+      <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
+
       {/* Header */}
-      <header className="flex items-center gap-3 mb-auto">
+      <header className="flex items-center gap-3 mb-auto relative z-10">
         <Logo size="sm" />
-        <span className="text-xl font-semibold tracking-tight text-white">{BRAND_NAME}</span>
+        <span className="text-xl font-bold tracking-tight text-white">{BRAND_NAME}</span>
       </header>
 
       {/* Feature Showcase */}
-      <main className="flex items-center justify-center flex-1">
-        <div className="max-w-lg text-4xl font-medium tracking-tight">
+      <main className="flex items-center justify-center flex-1 relative z-10">
+        <div className="max-w-lg text-5xl font-bold tracking-tight leading-tight">
           <TypeWriter
             key={key}
             lines={[
               currentExample.line1,
               currentExample.line2,
             ]}
-            colors={[currentExample.color, 'text-white/80']}
+            colors={[currentExample.color, 'text-white/90']}
             typingSpeed={45}
             deleteSpeed={30}
             pauseBeforeDelete={3000}
@@ -138,7 +142,7 @@ const ShowcasePanel: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="text-sm text-white/40">
+      <footer className="text-sm text-white/50 relative z-10">
         Built by a developer tired of pasting the same files 50 times.
       </footer>
     </div>
@@ -159,31 +163,31 @@ type AuthView = 'landing' | 'login' | 'signup';
 const LandingView: React.FC<{ onViewChange: (view: AuthView) => void, onDemoMode?: () => void }> = ({ onViewChange, onDemoMode }) => (
   <div className="w-full max-w-md text-center animate-fadeIn px-4">
     {/* Mobile Logo */}
-    <div className="flex justify-center mb-8 lg:hidden">
+    <div className="flex justify-center mb-10 lg:hidden">
         <Logo size="lg" />
     </div>
-    
+
     {/* Updated Headline - Developer Focused */}
-    <h1 className="text-5xl font-extrabold mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
+    <h1 className="text-5xl sm:text-6xl font-bold mb-5 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-zinc-400 leading-tight">
         Never lose context again.
     </h1>
-    <p className="text-xl text-white/70 mb-10">
+    <p className="text-xl text-white/60 mb-12 leading-relaxed">
         The AI coding assistant that actually remembers your codebase.
     </p>
 
-    <div className="flex gap-4 mb-6">
-      <Button variant="secondary" onClick={() => onViewChange('login')} className="flex-1">
-        Log In
-      </Button>
-      <Button variant="primary" onClick={() => onViewChange('signup')} className="flex-1">
+    <div className="flex flex-col sm:flex-row gap-4 mb-8">
+      <Button variant="primary" onClick={() => onViewChange('signup')} className="flex-1 text-base">
         Get Started
+      </Button>
+      <Button variant="secondary" onClick={() => onViewChange('login')} className="flex-1 text-base">
+        Log In
       </Button>
     </div>
 
     {onDemoMode && (
         <button
         onClick={onDemoMode}
-        className="text-sm text-white/60 hover:text-white hover:underline transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded px-2 py-1"
+        className="text-sm text-white/50 hover:text-white/80 hover:underline transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded-lg px-3 py-2"
         >
         Try the interactive demo
         </button>
@@ -224,7 +228,7 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
   };
 
   const handleBackClick = useCallback(() => onViewChange('landing'), [onViewChange]);
-  
+
   const handleSwitchView = useCallback(() => {
       setMessage(null);
       setEmail('');
@@ -234,38 +238,38 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
 
   return (
     <div className="w-full max-w-sm animate-fadeIn relative">
-        <button onClick={handleBackClick} className="absolute top-0 left-0 text-white/50 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded-full p-2 hover:bg-white/5" aria-label="Go back to landing page">
-            <ArrowLeft className="w-6 h-6" />
+        <button onClick={handleBackClick} className="absolute top-0 left-0 text-white/50 hover:text-white transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 rounded-xl p-2.5 hover:bg-white/5" aria-label="Go back to landing page">
+            <ArrowLeft className="w-5 h-5" />
         </button>
 
-      <div className="flex flex-col items-center justify-center mb-8 pt-8">
+      <div className="flex flex-col items-center justify-center mb-10 pt-10">
          <Logo size="lg" />
-        <h1 className="text-3xl font-bold tracking-tight mt-6">
+        <h1 className="text-3xl font-bold tracking-tight mt-6 text-white">
           {isSignUp ? 'Start Building' : 'Welcome Back'}
         </h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-            <label htmlFor="email" className="sr-only">Email address</label>
+            <label htmlFor="email" className="block text-sm font-medium text-white/70 mb-2">Email address</label>
             <Input
             id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email address"
+            placeholder="you@example.com"
             required
             autoComplete="email"
             />
         </div>
         <div>
-            <label htmlFor="password" className="sr-only">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-white/70 mb-2">Password</label>
             <Input
             id="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
+            placeholder="••••••••"
             required
             minLength={6}
             autoComplete={isSignUp ? "new-password" : "current-password"}
@@ -274,17 +278,17 @@ const AuthForm: React.FC<{ view: 'login' | 'signup', onViewChange: (view: AuthVi
 
         {message && <Alert type={message.type} message={message.content} />}
 
-        <Button type="submit" loading={loading} className="w-full">
+        <Button type="submit" loading={loading} className="w-full text-base">
           {isSignUp ? 'Create Account' : 'Sign In'}
         </Button>
       </form>
 
-      <div className="mt-8 pt-6 border-t border-white/[0.06] text-center">
-        <p className="text-sm text-white/60">
+      <div className="mt-8 pt-6 border-t border-white/[0.08] text-center">
+        <p className="text-sm text-white/50">
           {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
           <button
             onClick={handleSwitchView}
-            className="text-blue-400 hover:text-blue-300 hover:underline font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+            className="text-blue-400 hover:text-blue-300 font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg px-1 py-0.5 transition-colors"
           >
             {isSignUp ? 'Log in' : 'Sign up'}
           </button>
